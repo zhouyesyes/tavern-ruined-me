@@ -27,7 +27,7 @@ export function createApp(host) {
             else if (k === 'checked' || k === 'disabled' || k === 'selected' || k === 'open') el[k] = !!v;
             else el.setAttribute(k, v === true ? '' : v);
         }
-        for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) el.append(kid.nodeType ? kid : String(kid));
+        for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined && kid !== false) el.append(kid.nodeType ? kid : String(kid));
         return el;
     }
     const toast = (kind, msg) => host.toast?.(kind, msg);
@@ -93,11 +93,16 @@ export function createApp(host) {
                 const data = await host.loadWorldInfo(name);
                 if (!data || ctx().chatId !== startId) { if (ctx().chatId !== startId) return; continue; }
                 const meta = bookMeta(s, name, true);
-                if (meta.writeBack === false) continue;
+                if (meta.restored) continue;
                 // 备份要拍在「还没被我们改过」的书上，所以先算再备份
                 const probe = planWriteBack(s, chat, name, data);
                 if (!probe.length) continue;
-                if (!meta.backup) { meta.backup = snapshotBook(data); saveSettings(); }
+                if (!meta.backup) {
+                    meta.backup = snapshotBook(data); saveSettings();
+                    for (const button of doc.querySelectorAll('.tvrm-restore')) {
+                        if (button.dataset.book === name) button.disabled = false;
+                    }
+                }
                 const plan = planWriteBack(s, chat, name, data);
                 for (const c of plan) data.entries[c.uid].disable = c.disable;
                 await host.saveWorldInfo(name, data, true);
@@ -115,11 +120,11 @@ export function createApp(host) {
         const meta = bookMeta(settings(), name);
         if (!meta?.backup) { toast('info', '这本书还没有备份'); return; }
         await host.saveWorldInfo(name, JSON.parse(JSON.stringify(meta.backup.data)), true);
-        meta.writeBack = false; // 恢复完先停写回，免得下一次又被改回去
+        meta.restored = true; // 再次选择或调整配置后重新接管
         entryCache.delete(name);
         saveSettings();
         scheduleNative();
-        toast('success', `「${name}」已恢复成备份，写回已暂停（可在面板里重新打开）`);
+        toast('success', `「${name}」已恢复成备份，再次选择或调整配置后会重新同步`);
         renderPanel();
     }
 
@@ -144,7 +149,7 @@ export function createApp(host) {
             const sections = [];
             for (const g of groups) {
                 const members = entries.filter(e => bucketOf(cfg, e.uid) === g.id);
-                if (!members.length) continue;
+                if (!members.length && mode === 'status') continue;
                 sections.push(groupSection(name, g, members, cfg, { mode, chat, onChange, s }));
             }
             if (!sections.length) continue;
@@ -176,19 +181,8 @@ export function createApp(host) {
         const details = h('details', { class: 'tvrm-group', open: true },
             h('summary', null, h('span', { class: 'tvrm-group-name' }, g.name), h('span', { class: 'tvrm-count' }, `${members.length}`)),
         );
+        if (!members.length) details.append(h('p', { class: 'tvrm-note' }, '分类还没有条目，请在扩展面板下方的条目菜单中归类。'));
         if (g.desc) details.append(h('p', { class: 'tvrm-desc' }, g.desc));
-        if (mode === 'pick' && g.mode === 'one') {
-            const sel = h('select', { class: 'text_pole tvrm-select' },
-                h('option', { value: '' }, '— 不选 —'),
-                members.map(e => h('option', { value: String(e.uid), selected: Array.isArray(picked) && picked.includes(String(e.uid)) }, entryLabel(e))));
-            sel.addEventListener('change', () => {
-                chat.groups[book] ??= {};
-                chat.groups[book][g.id] = sel.value ? [sel.value] : [];
-                onChange?.();
-            });
-            details.append(h('div', { class: 'tvrm-selectwrap' }, sel));
-            return details;
-        }
         for (const e of members) {
             const uid = String(e.uid);
             let checked;
@@ -222,10 +216,12 @@ export function createApp(host) {
 
     // ---------- 弹窗：选哪些 ----------
     let pickerBusy = false;
-    async function openPicker() {
+    async function openPicker(automatic = false) {
         if (pickerBusy) return;
         const s = settings();
-        if (!needsPicker(s)) { toast('info', '还没有需要选的内容。先在扩展面板里给世界书建组。'); return; }
+        if (!needsPicker(s)) { if (!automatic) toast('info', '没有可选择的条目，请在扩展面板将条目归入自定义分类；常开、常关会自动应用。'); return; }
+        if (ctx().chatId === undefined || ctx().chatId === null) return;
+        const startId = ctx().chatId;
         pickerBusy = true;
         try {
             let chat = chatWorld();
@@ -238,14 +234,21 @@ export function createApp(host) {
             const body = h('div');
             box.append(body);
             await renderLoreView(body, { mode: 'pick', chat, onChange: () => {} });
+            if (ctx().chatId !== startId) return;
+            if (!body.querySelector('input:not(:disabled)')) {
+                if (!automatic) toast('info', '没有可选择的条目：请先把条目归入自定义分类；常开、常关会自动应用。');
+                return;
+            }
             const ok = await host.popup(box, '确定');
-            if (ok) {
+            if (ok && ctx().chatId === startId) {
                 // 画面上看到什么就存什么：没碰过的组按「没选」存下来
                 for (const [n, cfg] of Object.entries(s.world.books)) {
+                    cfg.restored = false;
                     chat.groups[n] ??= {};
                     for (const g of cfg.groups) chat.groups[n][g.id] ??= [];
                 }
-                for (const n of s.world.wholeBooks) chat.books[n] ??= true;
+                for (const n of s.world.wholeBooks) { chat.books[n] ??= true; bookMeta(s, n, true).restored = false; }
+                saveSettings();
                 saveChatWorld(chat);
             }
         } finally {
@@ -256,7 +259,7 @@ export function createApp(host) {
     // ---------- 状态 ----------
     let statusBox = null;
     async function openStatus() {
-        const box = h('div', { class: 'tvrm-popup' }, h('h3', { class: 'tvrm-popup-title' }, 'Lore 状态'));
+        const box = h('div', { class: 'tvrm-popup' }, h('h3', { class: 'tvrm-popup-title' }, '世界书状态'));
         const body = h('div');
         box.append(body, h('p', { class: 'tvrm-note' }, '这是当前聊天的配置结果；条目还要满足关键词、概率等原本的触发条件才会真的进提示词。'));
         statusBox = body;
@@ -266,14 +269,6 @@ export function createApp(host) {
     }
     function refreshStatusIfOpen() {
         if (statusBox?.isConnected) renderLoreView(statusBox, { mode: 'status', chat: chatWorld() });
-    }
-
-    // 快捷回复栏里的「Lore 状态」按钮
-    function ensureQrButton() {
-        const bar = doc.getElementById('qr--bar');
-        if (!bar || bar.querySelector('.tvrm-qr')) return;
-        const holder = bar.querySelector('.qr--buttons') || bar;
-        holder.append(h('div', { class: 'qr--button menu_button interactable tvrm-qr', tabindex: '0', onclick: () => openStatus() }, h('div', { class: 'qr--button-label' }, 'Lore 状态')));
     }
 
     // ---------- 打开酒馆自带世界书页面：开关、变暗、小字跟着当前聊天 ----------
@@ -368,7 +363,7 @@ export function createApp(host) {
         const pane = h('div', { class: 'tvrm-pane' });
         pane.append(h('div', { class: 'tvrm-actions' },
             h('button', { type: 'button', class: 'menu_button', onclick: () => openPicker() }, '重选当前聊天'),
-            h('button', { type: 'button', class: 'menu_button', onclick: () => openStatus() }, '看 Lore 状态')));
+            h('button', { type: 'button', class: 'menu_button', onclick: () => openStatus() }, '看 世界书状态')));
 
         // 添加书
         const names = bookNames();
@@ -391,23 +386,22 @@ export function createApp(host) {
     }
 
     function cardHead(name, tag, meta, onRemove) {
-        const wb = h('input', { type: 'checkbox', checked: meta?.writeBack !== false });
-        wb.addEventListener('change', () => { const m = bookMeta(settings(), name, true); m.writeBack = wb.checked; saveSettings(); if (wb.checked) scheduleWriteBack(); });
         return h('div', { class: 'tvrm-card-head' },
             h('span', { class: 'tvrm-card-title' }, h('b', null, name), h('small', null, tag)),
             h('span', { class: 'tvrm-card-tools' },
-                h('label', { class: 'tvrm-mini', title: '把这个聊天的选择同步进原书的开关' }, wb, '写回'),
-                h('button', { type: 'button', class: 'menu_button tvrm-icon', title: '恢复首次写回前的备份', disabled: !meta?.backup, onclick: () => restoreBook(name) }, '↺'),
                 h('button', { type: 'button', class: 'menu_button tvrm-icon', title: '移除', onclick: () => onRemove() }, '✕')));
     }
 
+    function restoreAction(name) {
+        return h('button', { type: 'button', class: 'tvrm-restore', 'data-book': name, disabled: !bookMeta(settings(), name)?.backup, onclick: () => restoreBook(name) }, '恢复原书');
+    }
     function wholeCard(name, s) {
         return h('section', { class: 'tvrm-card' },
             cardHead(name, '整本开关', bookMeta(s, name), () => {
                 s.world.wholeBooks = s.world.wholeBooks.filter(n => n !== name);
                 delete s.world.wholeMeta[name];
                 saveSettings(); renderPanel();
-            }));
+            }), restoreAction(name));
     }
 
     function bookCard(name, s) {
@@ -415,7 +409,7 @@ export function createApp(host) {
         const det = h('details', { class: 'tvrm-card' });
         det.append(h('summary', null, cardHead(name, '按条目分组', cfg, () => { delete s.world.books[name]; saveSettings(); renderPanel(); })));
         const body = h('div', { class: 'tvrm-card-body' });
-        det.append(body);
+        det.append(body, restoreAction(name));
         let loaded = false;
         det.addEventListener('toggle', () => { if (det.open && !loaded) { loaded = true; fillBook(body, name, cfg); } });
         return det;
@@ -424,7 +418,7 @@ export function createApp(host) {
     async function fillBook(body, name, cfg) {
         body.replaceChildren(h('p', { class: 'tvrm-empty' }, '读取中…'));
         const entries = await loadEntries(name, true);
-        const refresh = () => { saveSettings(); scheduleWriteBack(); scheduleNative(); fillBook(body, name, cfg); };
+        const refresh = () => { cfg.restored = false; saveSettings(); scheduleWriteBack(); scheduleNative(); fillBook(body, name, cfg); };
 
         body.replaceChildren();
         // 组的编辑
@@ -434,14 +428,11 @@ export function createApp(host) {
             nameIn.addEventListener('change', () => { g.name = nameIn.value.trim() || g.name; saveSettings(); });
             const descIn = h('input', { class: 'text_pole', value: g.desc || '', placeholder: '说明（选的时候会显示）' });
             descIn.addEventListener('change', () => { g.desc = descIn.value; saveSettings(); });
-            const modeSel = h('select', { class: 'text_pole' },
-                h('option', { value: 'one', selected: g.mode === 'one' }, '单选'), h('option', { value: 'any', selected: g.mode !== 'one' }, '多选'));
-            modeSel.addEventListener('change', () => { g.mode = modeSel.value; saveSettings(); });
             body.append(h('div', { class: 'tvrm-group-edit' }, nameIn, descIn,
-                h('div', { class: 'tvrm-group-edit-row' }, modeSel,
-                    h('button', { type: 'button', class: 'menu_button', onclick: () => { removeGroup(cfg, g.id); refresh(); } }, '删除这组'))));
+                h('button', { type: 'button', class: 'menu_button', onclick: () => { removeGroup(cfg, g.id); refresh(); } }, '删除这组')));
         }
-        body.append(h('button', { type: 'button', class: 'menu_button', onclick: () => { cfg.groups.push({ id: newGroupId(), name: `新分组 ${cfg.groups.length + 1}`, desc: '', mode: 'any' }); saveSettings(); fillBook(body, name, cfg); } }, '＋ 新建分组'));
+        body.append(h('button', { type: 'button', class: 'menu_button', onclick: () => { cfg.groups.push({ id: newGroupId(), name: '新分组 ' + (cfg.groups.length + 1), desc: '' }); refresh(); } }, '＋ 新建分组'));
+        body.append(h('p', { class: 'tvrm-note' }, '建好分类后，用下方条目右侧的菜单归类。常开、常关不需要在聊天中选择。'));
 
         // 条目分桶
         body.append(h('div', { class: 'tvrm-sub-title' }, `条目（${entries.length}）`));
@@ -455,30 +446,35 @@ export function createApp(host) {
             const cur = bucketOf(cfg, e.uid);
             const stale = isCustomBucket(cur) && !cfg.groups.some(g => g.id === cur);
             const sel = h('select', { class: 'text_pole tvrm-bucket' }, bucketOptions(stale ? BUCKET.FREE : cur));
-            sel.addEventListener('change', () => { setBucket(cfg, e.uid, sel.value); saveSettings(); scheduleWriteBack(); scheduleNative(); });
+            sel.addEventListener('change', () => { setBucket(cfg, e.uid, sel.value); cfg.restored = false; saveSettings(); scheduleWriteBack(); scheduleNative(); });
             body.append(h('div', { class: 'tvrm-row' },
                 h('span', { class: 'tvrm-main' }, h('span', { class: 'tvrm-name' }, entryLabel(e)), h('small', { class: 'tvrm-sub' }, entrySub(e))), sel));
         }
     }
 
     // ---------- 事件 ----------
+    const prompted = new Set();
+    function maybePrompt() {
+        const id = ctx().chatId;
+        if (id == null || chatWorld() || prompted.has(id) || !needsPicker(settings())) return;
+        prompted.add(id);
+        timers.setTimeout(() => { if (ctx().chatId === id && !chatWorld()) return openPicker(true); }, 300);
+    }
     function onChatChanged() {
+        maybePrompt();
         scheduleWriteBack();
         scheduleNative();
         refreshStatusIfOpen();
     }
     function onChatCreated() {
-        // 只有新开的聊天会走到这里；切回老聊天不会弹
-        if (!needsPicker(settings())) return;
-        timers.setTimeout(() => openPicker(), 300);
+        maybePrompt();
     }
 
     function init() {
         settings();
         mountPanel();
         startNativeWatch();
-        ensureQrButton();
-        if (host.setInterval) host.setInterval(ensureQrButton, 2000);
+
     }
 
     return { init, onEntriesLoaded, onChatChanged, onChatCreated, openPicker, openStatus, flushWriteBack, scheduleWriteBack, syncNative, renderLoreView, settings, mountPanel };

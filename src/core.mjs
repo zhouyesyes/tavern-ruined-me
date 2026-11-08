@@ -33,7 +33,7 @@ export function normalizeSettings(raw) {
         out.world.books[name] = {
             groups: Array.isArray(b.groups) ? b.groups : [],
             assign: b.assign && typeof b.assign === 'object' ? b.assign : {},
-            writeBack: b.writeBack !== false,
+            restored: b.restored === true,
             backup: b.backup ?? null,
         };
     }
@@ -113,7 +113,6 @@ export function seedWorldChat(settings, entriesByBook) {
             chat.groups[name][g.id] = entries
                 .filter(e => bucketOf(cfg, e.uid) === g.id && !e.disable)
                 .map(e => String(e.uid));
-            if (g.mode === 'one') chat.groups[name][g.id] = chat.groups[name][g.id].slice(0, 1);
         }
     }
     for (const name of settings.world.wholeBooks) {
@@ -130,6 +129,7 @@ export function seedWorldChat(settings, entriesByBook) {
 export function resolveEntry(settings, chat, book, uid, originalDisable = false) {
     uid = String(uid);
     const cfg = settings.world.books[book];
+    if (bookMeta(settings, book)?.restored) return null;
     if (cfg) {
         const bucket = bucketOf(cfg, uid);
         if (bucket === BUCKET.FREE) return null;
@@ -169,7 +169,7 @@ export function planWriteBack(settings, chat, book, bookData) {
     const changes = [];
     const meta = bookMeta(settings, book);
     if (!settings.world.books[book] && !settings.world.wholeBooks.includes(book)) return changes;
-    if (meta && meta.writeBack === false) return changes;
+    if (meta?.restored) return changes;
     const backup = meta?.backup?.data;
     for (const entry of Object.values(bookData?.entries || {})) {
         const orig = backup?.entries?.[entry.uid]?.disable ?? entry.disable;

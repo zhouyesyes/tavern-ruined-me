@@ -19,17 +19,18 @@ function setup() {
         4: { uid: 4, comment: '南方', key: ['s'], disable: true },
         9: { uid: 9, comment: '没管', key: [], disable: false } } } };
     const saved = [];
+    const popups = [];
     const ctx = { extensionSettings: {}, chatMetadata: {}, chatId: 'c1', saveSettingsDebounced() {}, saveMetadataDebounced() {} };
     const timers = []; 
     const host = {
         document, getContext: () => ctx, worldNames: () => ['A'],
         loadWorldInfo: async n => JSON.parse(JSON.stringify(books[n])),
         saveWorldInfo: async (n, d) => { books[n] = JSON.parse(JSON.stringify(d)); saved.push(n); },
-        popup: async () => true, toast() {},
+        popup: async el => { popups.push(el); return true; }, toast() {},
         timers: { setTimeout: (f, ms) => { timers.push({ f, ms }); return timers.length; }, clearTimeout: id => { timers[id - 1] = null; } },
     };
     const run = async () => { const t = timers.splice(0).filter(Boolean); for (const x of t) await x.f(); await new Promise(r => setTimeout(r, 5)); };
-    return { app: createApp(host), ctx, books, saved, run, document, timers };
+    return { app: createApp(host), ctx, books, saved, run, document, timers, popups };
 }
 
 test('面板：三个标签，后两个灰着；世界书可添加', () => {
@@ -38,7 +39,7 @@ test('面板：三个标签，后两个灰着；世界书可添加', () => {
     const tabs = [...document.querySelectorAll('.tvrm-tab')];
     assert.deepEqual(tabs.map(t => t.disabled), [false, true, true]);
     assert.ok(document.querySelector('#tvrm-drawer .inline-drawer-toggle'));
-    assert.ok(document.querySelector('.tvrm-qr'), '快捷回复栏有 Lore 状态按钮');
+    assert.equal(document.querySelector('.tvrm-qr'), null, '聊天区不添加入口');
 });
 
 test('选择 → 存进聊天 → 合并写回原书一次 → 没变化不再存', async () => {
@@ -101,9 +102,44 @@ test('恢复备份：整本还原并暂停写回', async () => {
     app.mountPanel();
     // 备份出现后重画面板，↺ 按钮可点
     document.querySelector('.tvrm-tab').click();
-    const btn = [...document.querySelectorAll('.tvrm-icon')].find(b => b.textContent === '↺');
+    const btn = [...document.querySelectorAll('.tvrm-restore')].find(b => b.textContent === '恢复原书');
     assert.equal(btn.disabled, false);
     btn.click(); await run();
     assert.equal(books.A.entries[1].disable, true);
-    assert.equal(s.world.books.A.writeBack, false);
+    assert.equal(s.world.books.A.restored, true);
+    app.onChatChanged(); await run();
+    assert.equal(books.A.entries[1].disable, true, '恢复结果不会被自动覆盖');
+});
+
+test('旧单选组自由勾选；旧关闭写回字段不再阻止同步', async () => {
+    const { app, books, run, ctx } = setup();
+    books.A.entries[4].disable = false;
+    app.settings().world.books.A = { groups: [{ id: 'g', name: '分类', mode: 'one' }], assign: { 1: 'on', 3: 'g', 4: 'g' }, writeBack: false };
+    await app.openPicker(); await run();
+    assert.deepEqual(ctx.chatMetadata.tavern_ruined_me.slots.world.groups.A.g, ['3', '4']);
+    assert.equal(books.A.entries[1].disable, false);
+});
+test('分类菜单包含新组；空分类说明可见且不弹空窗', async () => {
+    const { app, document, run, popups } = setup();
+    const cfg = { groups: [{ id: 'new', name: '新分类' }], assign: {} };
+    app.settings().world.books.A = cfg;
+    app.init();
+    const card = document.querySelector('details.tvrm-card');
+    card.open = true; card.dispatchEvent(new document.defaultView.Event('toggle')); await run();
+    assert.ok([...document.querySelectorAll('.tvrm-bucket option')].some(o => o.value === 'new' && o.textContent === '新分类'));
+    const box = document.createElement('div');
+    await app.renderLoreView(box, { mode: 'pick', chat: { groups: {}, books: {} } });
+    assert.match(box.textContent, /新分类/);
+    assert.match(box.textContent, /还没有条目/);
+    await app.openPicker();
+    assert.equal(popups.length, 0, '空分类不弹空窗');
+});
+test('聊天切换兜底弹窗并去重，已配置聊天不弹', async () => {
+    const { app, ctx, run } = setup();
+    app.settings().world.books.A = { groups: [{ id: 'g', name: '分类' }], assign: { 3: 'g' } };
+    app.onChatCreated(); app.onChatChanged(); await run();
+    assert.ok(ctx.chatMetadata.tavern_ruined_me);
+    const previous = ctx.chatMetadata.tavern_ruined_me;
+    app.onChatChanged(); await run();
+    assert.equal(ctx.chatMetadata.tavern_ruined_me, previous);
 });
