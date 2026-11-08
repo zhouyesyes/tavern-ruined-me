@@ -142,9 +142,26 @@ export function createPresetKeeper(host) {
         nameEl.replaceWith(editor); input.focus?.();
     }
 
-    function orderList(order) {
-        return h('ol', { class: 'tvrm-ledger-lines' }, order.map(o => h('li', { class: o.on ? '' : 'is-off' },
-            h('span', { class: 'tvrm-state ' + (o.on ? 'is-on' : 'is-off'), title: o.on ? '开' : '关', 'aria-label': o.on ? '开' : '关' }), h('span', { class: 'tvrm-name' }, host.preset.entryName?.(o.id) || o.id))));
+    // 条目列表：在用的那套每条前面一个小圆点，能直接点开关；存档只看
+    function orderList(order, onToggle) {
+        return h('ol', { class: 'tvrm-ledger-lines' }, order.map((o, i) => {
+            const label = host.preset.entryName?.(o.id) || o.id;
+            const dot = onToggle
+                ? h('button', { type: 'button', class: 'tvrm-dot ' + (o.on ? 'is-on' : 'is-off'), title: o.on ? '开（点一下关掉）' : '关（点一下打开）', 'aria-label': label + (o.on ? '开' : '关'), onclick: () => onToggle(i) })
+                : h('span', { class: 'tvrm-state ' + (o.on ? 'is-on' : 'is-off'), title: o.on ? '开' : '关', 'aria-label': o.on ? '开' : '关' });
+            return h('li', { class: o.on ? '' : 'is-off' }, dot, h('span', { class: 'tvrm-name' }, label));
+        }));
+    }
+    // 在用的那套里点一条：当前聊天马上改到酒馆的预设里；别的聊天只改它记着的，下次进去时用上
+    function toggleActive(key, i) {
+        const chat = store().chats[key]; const item = chat?.active.order[i]; if (!item) return;
+        item.on = !item.on; save(); rerender?.();
+        if (cur()?.key !== key) return;
+        queue = queue.then(async () => {
+            try { if (cur()?.key === key) await apply(chat); }
+            catch (e) { console.warn('[酒馆你害我不浅] 预设开关没改过去', e); toast('error', '没改过去：' + (e.message || e)); }
+            rerender?.();
+        });
     }
     function setCard(chat, label, item, isActive, key) {
         const k = key + '|' + (item.id || 'active');
@@ -156,7 +173,7 @@ export function createPresetKeeper(host) {
             nameEl.addEventListener('click', () => rename(chat, item, nameEl));
             d.append(h('div', { class: 'tvrm-rename-row' }, nameEl));
         }
-        d.append(orderList(item.order));
+        d.append(orderList(item.order, isActive ? i => toggleActive(key, i) : null));
         if (isActive) d.append(h('div', { class: 'tvrm-set-actions' }, h('button', { type: 'button', class: 'menu_button', onclick: () => { saveAs(chat, ''); save(); rerender?.(); } }, '另存一套')));
         else d.append(h('div', { class: 'tvrm-set-actions' },
             h('button', { type: 'button', class: 'menu_button', onclick: () => doSwitch(item.id) }, '切换到这套'),

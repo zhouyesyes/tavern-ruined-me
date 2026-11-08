@@ -429,7 +429,7 @@ test('原书里删掉的条目：别的聊天的小账里也去掉，不显示�
     bookA.open = true; bookA.dispatchEvent(new x.document.defaultView.Event('toggle')); await x.tick(); await x.tick();
     assert.equal('2' in idx[firstKey].books.A, false);
     assert.doesNotMatch(bookA.textContent, /条目 2|条目二/);
-    const dot = bookA.querySelector('.tvrm-state'); assert.equal(dot.textContent, '');
+    const dot = bookA.querySelector('.tvrm-dot'); assert.equal(dot.textContent, ''); assert.equal(dot.classList.contains('tvrm-state'), false, '按钮不挂会把它涂成方块的样式');
 });
 
 test('在「所有聊天」里点别的聊天的圆点：先记成待办，下次进那个聊天时用上', async () => {

@@ -158,3 +158,21 @@ test('切聊天时酒馆先换当前聊天、中间来一次设置事件：不�
     }
     const chats = x.keeper.store().chats; assert.equal(chats.A.preset, 'P1'); assert.equal(chats.B.preset, 'P2');
 });
+
+test('预设格里直接点圆点开关：当前聊天马上改到酒馆；别的聊天只改记录，进去时用上', async () => {
+    const x = setup(); await x.enter('A', '聊天A');
+    await x.enter('B', '聊天B'); await x.manual('P2');
+    const root = x.document.getElementById('r'); x.keeper.render(root);
+    // 当前是 B：在用里点 x（P2 第一条，开着）
+    const dotOf = (key, name) => [...root.querySelectorAll('button.tvrm-dot')].find(b => b.getAttribute('aria-label').startsWith(name) && b.closest('.tvrm-page').querySelector('summary').textContent.startsWith(key));
+    dotOf('B', '条目x').click(); await x.keeper.whenIdle(); await x.tick();
+    assert.equal(x.s.order.find(o => o.identifier === 'x').enabled, false, '酒馆里真的关了');
+    assert.equal(x.keeper.store().chats.B.active.order.find(o => o.id === 'x').on, false);
+    // 别的聊天 A：点 a，只改记录
+    x.keeper.render(root);
+    dotOf('A', '条目a').click(); await x.keeper.whenIdle();
+    assert.equal(x.keeper.store().chats.A.active.order.find(o => o.id === 'a').on, false);
+    assert.equal(x.s.name, 'P2', '没去动当前的预设');
+    await x.enter('A', '聊天A');
+    assert.equal(x.s.name, 'P1'); assert.equal(x.s.order.find(o => o.identifier === 'a').enabled, false, '进 A 时用上了');
+});
