@@ -12,6 +12,7 @@ export function createApp(host) {
     const timers = host.timers || { setTimeout, clearTimeout };
     const toast = (kind, msg) => host.toast?.(kind, msg);
     let panelRoot = null;
+    let mode = 'world'; // 面板当前标签：world / preset
     let ready = null;
     let chatPopup = null;
     const openBooks = new Set(); // 面板里展开的书，默认都折叠
@@ -458,8 +459,11 @@ export function createApp(host) {
         if (!panelRoot || !current(ready)) return;
         renderChatPopup();
         const t = token();
-        panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => {}, 'tvrm-tab is-active'),
-            h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'), h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
+        const keeper = host.presetKeeper;
+        panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => { mode = 'world'; renderPanel(); }, 'tvrm-tab' + (mode === 'world' ? ' is-active' : '')),
+            keeper ? button('预设', () => { mode = 'preset'; renderPanel(); }, 'tvrm-tab' + (mode === 'preset' ? ' is-active' : '')) : h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'),
+            h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
+        if (mode === 'preset' && keeper) { const box = h('div', { class: 'tvrm-presets' }); panelRoot.append(box); keeper.render(box); return; }
         const chatOn = hasChat();
         if (chatOn) panelRoot.append(h('div', { class: 'tvrm-actions' }, button('这个聊天开哪些', () => showChat())));
         // 第一块：这个聊天绑定的（没开聊天就不显示）
