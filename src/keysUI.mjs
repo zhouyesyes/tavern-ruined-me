@@ -2,7 +2,7 @@
 // host: document, getContext(), toast(kind,msg), confirm(text),
 //       proxy: { names(), add({name,url,password}) }   酒馆的反代列表
 //       probe(url, key) → 模型名数组（走酒馆服务器拉一次模型列表；不通就抛错）
-import { KEYS, newKey, maskKey, searchKeys, importFromVault, vaultCount, freeProxyName, classifyField, autoName } from './keys.mjs';
+import { KEYS, newKey, maskKey, searchKeys, freeProxyName, classifyField, autoName } from './keys.mjs';
 
 export function createKeyKeeper(host) {
     const doc = host.document;
@@ -113,17 +113,8 @@ export function createKeyKeeper(host) {
 
     function render(container) {
         rerender = () => render(container);
-        const s = store(); const old = ctx().extensionSettings.apiVault; const n = vaultCount(old);
+        const s = store();
         container.replaceChildren();
-        // 旧插件「通用钥匙API管理器」里还有数据：提示搬过来（搬过一次就只留一行小字）
-        if (n && !s.movedFromVault) container.append(h('div', { class: 'tvrm-key-move' },
-            h('p', null, `发现「通用钥匙API管理器」里存着 ${n} 条，搬过来吗？只是抄一份，原来的不动。`),
-            btn('搬过来', () => {
-                const r = importFromVault(s, old); s.movedFromVault = Date.now(); save(); rerender?.();
-                toast('success', `搬过来 ${r.added.length} 条` + (r.skipped ? `，${r.skipped} 条一样的跳过了` : '') + '。核对好了就可以删掉旧插件');
-            })));
-        else if (n && s.movedFromVault) container.append(h('small', { class: 'tvrm-key-hint' }, `已从「通用钥匙API管理器」搬过（它那边还有 ${n} 条）。核对好了就可以删掉旧插件`,
-            ' ', h('a', { href: '#', onclick: e => { e.preventDefault(); const r = importFromVault(s, old); save(); rerender?.(); toast('success', r.added.length ? `又搬来 ${r.added.length} 条` : '没有新的要搬'); } }, '再对一遍')));
         const search = h('input', { class: 'text_pole', placeholder: '搜名字、地址、模型、标签', value: query });
         search.addEventListener('input', () => { query = search.value; const list = container.querySelector('.tvrm-key-list'); list?.replaceWith(listEl()); });
         container.append(h('div', { class: 'tvrm-actions' }, search,
@@ -172,20 +163,25 @@ export function createKeyKeeper(host) {
         closeSheet(); hidePill();
         toast('success', `填好了「${k.name}」` + (both ? '（地址和密钥都填了）' : ''));
     }
+    // 框在弹窗（<dialog>，浏览器的最上层）里：小钥匙和选单也放进那个弹窗，不然会被它盖住看不见；不在弹窗里就放在页面上
+    const layerOf = el => el?.closest?.('dialog[open]') || doc.body;
     function hidePill() { pill?.remove(); pill = null; }
     function closeSheet() { sheet?.remove(); sheet = null; }
     function showPill(el, kind) {
         hidePill();
         if (!store().keys.length) return;
-        const r = el.getBoundingClientRect(); const win = doc.defaultView;
+        const r = el.getBoundingClientRect(); const layer = layerOf(el);
         pill = h('button', { type: 'button', class: 'tvrm-key-pill', title: '从钥匙本里填', 'aria-label': '从钥匙本里填' }, h('i', { class: 'fa-solid fa-key' }));
-        pill.style.top = Math.max(0, r.top + win.scrollY + (r.height - 28) / 2) + 'px';
-        pill.style.left = Math.max(0, r.right + win.scrollX - 32) + 'px';
+        // 弹窗里：按弹窗的位置算（弹窗自己是定位的）；页面上：按屏幕位置算
+        const base = layer === doc.body ? { top: 0, left: 0 } : layer.getBoundingClientRect();
+        if (layer !== doc.body) pill.classList.add('in-dialog');
+        pill.style.top = Math.max(0, r.top - base.top + (r.height - 28) / 2) + 'px';
+        pill.style.left = Math.max(0, r.right - base.left - 32) + 'px';
         // 按下去时不让输入框失焦（手机上键盘不会收起又弹出）
         pill.addEventListener('pointerdown', e => e.preventDefault());
         pill.addEventListener('mousedown', e => e.preventDefault());
         pill.addEventListener('click', () => openSheet(kind));
-        doc.body.append(pill);
+        layer.append(pill);
     }
     function openSheet(kind) {
         closeSheet();
@@ -202,7 +198,7 @@ export function createKeyKeeper(host) {
             h('div', { class: 'tvrm-key-sheet-head' }, h('b', null, kind === 'url' ? '填地址（密钥一起）' : '填密钥（地址一起）'), btn('关', closeSheet, 'tvrm-btn-mini')),
             store().keys.length > 6 ? search : null, list);
         draw();
-        doc.body.append(sheet);
+        layerOf(target?.el).append(sheet);
     }
     function initFill() {
         doc.addEventListener('focusin', e => {

@@ -235,13 +235,11 @@ details.tvrm-all > .tvrm-card { margin-top: 5px; }
 .tvrm-key-field > span { flex: 0 0 2.6em; color: var(--tvrm-dim); font-size: .9em; }
 .tvrm-key-field .text_pole { flex: 1; min-width: 0; margin: 0; }
 .tvrm-key-check { display: flex; align-items: center; gap: 4px; font-size: .9em; margin: 0; }
-.tvrm-key-move { border: 1px dashed var(--tvrm-accent); border-radius: 6px; padding: 6px 8px; }
-.tvrm-key-move p { margin: 0 0 4px; }
-.tvrm-key-hint { color: var(--tvrm-dim); }
-/* 点哪填哪：输入框右边的小钥匙，和从下面弹上来的选单 */
-.tvrm-key-pill { position: absolute; z-index: 30000; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);
+/* 点哪填哪：输入框右边的小钥匙，和从下面弹上来的选单（框在弹窗里时放进那个弹窗，见 keysUI.mjs 的 layerOf） */
+.tvrm-key-pill.in-dialog { position: absolute; }
+.tvrm-key-pill { position: fixed; z-index: 2147483000; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);
     background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-.tvrm-key-sheet { position: fixed; z-index: 30001; left: 0; right: 0; bottom: 0; max-height: 60vh; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+.tvrm-key-sheet { position: fixed; z-index: 2147483001; left: 0; right: 0; bottom: 0; max-height: 60vh; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); border-top: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .25); backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px)); }
 @media (min-width: 700px) { .tvrm-key-sheet { left: auto; right: 16px; bottom: 16px; width: 360px; border-radius: 12px; border: 1px solid var(--SmartThemeBorderColor, #888); } }
 .tvrm-key-sheet-head { display: flex; align-items: center; justify-content: space-between; }

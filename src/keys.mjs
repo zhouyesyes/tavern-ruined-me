@@ -1,5 +1,5 @@
 // API 格的数据部分（纯逻辑，不碰页面和酒馆，方便测试）：钥匙本里一条一条的地址、密钥、模型。全部自己写。
-// 存在 extensionSettings.tavern_ruined_me_keys = { keys: [...], movedFromVault: 时间 }
+// 存在 extensionSettings.tavern_ruined_me_keys = { keys: [...] }
 
 export const KEYS = 'tavern_ruined_me_keys';
 const str = v => (typeof v === 'string' ? v.trim() : '');
@@ -58,21 +58,6 @@ export function searchKeys(list, q) {
 // 同一把钥匙：地址一样，密钥一样；读不到真密钥的（只有遮住的样子）就比遮住的样子
 export const sameKey = (a, b) => normalizeUrl(a.url) === normalizeUrl(b.url)
     && (str(a.key) || str(b.key) ? str(a.key) === str(b.key) : !!str(a.keyHint) && str(a.keyHint) === str(b.keyHint));
-
-// 从旧插件「通用钥匙API管理器」（extensionSettings.apiVault）搬过来：只读它的数据，不改它
-// 已经有一样的（同地址同密钥）就跳过，返回 { added, skipped }
-export function importFromVault(store, vault) {
-    const old = Array.isArray(vault?.profiles) ? vault.profiles : [];
-    const added = []; let skipped = 0;
-    for (const p of old) {
-        if (!p || (!str(p.url) && !str(p.key) && !str(p.keyHint))) { skipped++; continue; }
-        const k = newKey({ name: p.name, url: p.url, key: p.key, keyHint: p.keyHint, model: p.model, models: p.models, tags: p.tags, note: p.note, proxyName: p.proxyRef?.name });
-        if (store.keys.some(x => sameKey(x, k))) { skipped++; continue; }
-        store.keys.push(k); added.push(k);
-    }
-    return { added, skipped };
-}
-export const vaultCount = vault => (Array.isArray(vault?.profiles) ? vault.profiles.length : 0);
 
 // 模型列表：酒馆状态检查回来的 { data: [{ id }] } 或 { models: [...] }，或者直接一个数组
 export function parseModels(res) {
