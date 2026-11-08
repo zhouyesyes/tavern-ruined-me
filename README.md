@@ -5,7 +5,7 @@ SillyTavern 前端扩展。目前提供世界书面板；预设和 API 留作后
 ## 安装和更新
 
 酒馆 → 扩展 → 安装扩展，填入 `https://github.com/zhouyesyes/tavern-ruined-me`。
-已安装的在扩展管理中更新，再刷新酒馆，版本 **0.6.0**。
+已安装的在扩展管理中更新，再刷新酒馆，版本 **0.6.1**。
 
 ## 世界书面板
 
@@ -66,3 +66,4 @@ node --check src/ui.mjs
 - 换预设：`#settings_preset_openai` 设值并触发 `change`（等于手点下拉，走酒馆的 `onSettingsPresetChange`），再 `await getPresetApplicationPromise()` 等预设载完（含 `prompt_order`）
 - 写回开关和顺序：`promptManager.getPromptOrderForCharacter(promptManager.activeCharacter)` 原地改，`promptManager.render(false)` 刷新预设页，`promptManager.saveServiceSettings()` 存下来（等 `SETTINGS_UPDATED`）
 - 记录手动改动：`OAI_PRESET_CHANGED_AFTER`、`SETTINGS_UPDATED` 事件
+- 旧一点的酒馆（0.6.1 起）：`openai.js` 整个模块一起导入（`import * as`），按名字取。没有 `openai_setting_names` 就按下拉里显示的预设名找选项；没有 `getPresetApplicationPromise` 就等当前预设名换过来、再多等一会儿（最多约 8 秒）。0.6.0 逐个导入这两个名字，旧酒馆少一个就整个插件加载失败、从扩展列表里消失
