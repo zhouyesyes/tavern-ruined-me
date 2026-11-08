@@ -248,3 +248,11 @@ details.tvrm-all > .tvrm-card { margin-top: 5px; }
 .tvrm-key-pick { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 6px; }
 .tvrm-key-pick small { color: var(--tvrm-dim, inherit); opacity: .75; overflow-wrap: anywhere; }
 .tvrm-key-pick.is-off { opacity: .5; }
+/* 扫描结果：勾哪些收哪些 */
+.tvrm-scan { border: 1px dashed var(--tvrm-accent); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.tvrm-scan-head { display: flex; align-items: center; justify-content: space-between; }
+.tvrm-scan-row { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--tvrm-line) 50%, transparent); }
+.tvrm-scan-row input { margin-top: 3px; }
+.tvrm-scan-row.is-have { opacity: .55; }
+.tvrm-scan-text { display: flex; flex-direction: column; min-width: 0; }
+.tvrm-scan-text small { color: var(--tvrm-dim); overflow-wrap: anywhere; }

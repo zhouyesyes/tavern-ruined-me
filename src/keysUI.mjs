@@ -1,8 +1,8 @@
 // API 格：钥匙本的界面 + 「点哪填哪」。全部自己写。
 // host: document, getContext(), toast(kind,msg), confirm(text),
-//       proxy: { names(), add({name,url,password}) }   酒馆的反代列表
+//       proxy: { names(), list() → [{name,url,password}], add({name,url,password}) }   酒馆的反代列表
 //       probe(url, key) → 模型名数组（走酒馆服务器拉一次模型列表；不通就抛错）
-import { KEYS, newKey, maskKey, searchKeys, freeProxyName, classifyField, autoName } from './keys.mjs';
+import { KEYS, newKey, maskKey, searchKeys, freeProxyName, classifyField, autoName, scanSettings, sameKey, hostOf } from './keys.mjs';
 
 export function createKeyKeeper(host) {
     const doc = host.document;
@@ -12,6 +12,7 @@ export function createKeyKeeper(host) {
     const save = () => ctx().saveSettingsDebounced?.();
     let rerender = null; let query = ''; let editing = null; // editing：正在编辑的那条（新建时是没有 id 的草稿）
     const open = new Set(); const busy = new Set();
+    let found = null; // 扫描结果：[{ source, path, name, url, key, have, pick }]
 
     function h(tag, attrs, ...kids) {
         const el = doc.createElement(tag);
@@ -52,6 +53,39 @@ export function createKeyKeeper(host) {
             k.tested = { ok: false, at: Date.now(), msg: String(e.message || e) };
             toast('error', '没通：' + (e.message || e));
         } finally { busy.delete(k.id); save(); rerender?.(); }
+    }
+
+    // 扫描：酒馆反代列表 + 所有插件设置里存的「地址 + 密钥」；已经在钥匙本里的标出来，不勾
+    function scan() {
+        const list = [];
+        for (const p of host.proxy?.list?.() || []) if (p?.url && p.password) list.push({ source: '酒馆反代列表', path: '酒馆反代列表 › ' + p.name, name: p.name, url: p.url, key: p.password, proxyName: p.name });
+        list.push(...scanSettings(ctx().extensionSettings, [KEYS, 'tavern_ruined_me', 'tavern_ruined_me_presets']));
+        const mine = store().keys; const seen = new Set();
+        found = list.filter(f => { const id = f.url + '|' + f.key; if (seen.has(id)) return false; seen.add(id); return true; })
+            .map(f => { const have = mine.some(k => sameKey(k, f)); return { ...f, have, pick: !have }; });
+        rerender?.();
+        const fresh = found.filter(f => !f.have).length;
+        toast(fresh ? 'success' : 'info', found.length ? `找到 ${found.length} 条，其中 ${fresh} 条钥匙本里还没有` : '没找到存着地址和密钥的地方');
+    }
+    function scanBox() {
+        const rows = found.map(f => {
+            const cb = h('input', { type: 'checkbox', checked: f.pick, disabled: f.have });
+            cb.addEventListener('change', () => { f.pick = cb.checked; });
+            return h('label', { class: 'tvrm-scan-row' + (f.have ? ' is-have' : '') }, cb,
+                h('span', { class: 'tvrm-scan-text' },
+                    h('span', { class: 'tvrm-name' }, f.name || hostOf(f.url) || '没有地址的密钥'),
+                    h('small', null, [f.url, maskKey(f.key)].filter(Boolean).join(' · ')),
+                    h('small', { class: 'tvrm-scan-from' }, (f.have ? '钥匙本里已经有 · ' : '') + '来自 ' + f.path)));
+        });
+        return h('div', { class: 'tvrm-scan' },
+            h('div', { class: 'tvrm-scan-head' }, h('b', null, `扫描到 ${found.length} 条`), btn('关掉', () => { found = null; rerender?.(); }, 'tvrm-btn-mini')),
+            rows.length ? rows : h('p', { class: 'tvrm-empty' }, '酒馆反代列表和插件设置里都没找到'),
+            rows.length ? h('div', { class: 'tvrm-set-actions' }, btn('收进钥匙本', () => {
+                const take = found.filter(f => f.pick && !f.have);
+                for (const f of take) store().keys.push(newKey({ name: f.name, url: f.url, key: f.key, proxyName: f.proxyName, note: '扫描来自 ' + f.path }));
+                found = null; save(); rerender?.();
+                toast('success', take.length ? `收进来 ${take.length} 条` : '没有勾选');
+            })) : null);
     }
 
     function editor(draft) {
@@ -118,7 +152,9 @@ export function createKeyKeeper(host) {
         const search = h('input', { class: 'text_pole', placeholder: '搜名字、地址、模型、标签', value: query });
         search.addEventListener('input', () => { query = search.value; const list = container.querySelector('.tvrm-key-list'); list?.replaceWith(listEl()); });
         container.append(h('div', { class: 'tvrm-actions' }, search,
-            btn('新建', () => { editing = { ...newKey(), ref: null }; rerender?.(); })));
+            btn('新建', () => { editing = { ...newKey(), ref: null }; rerender?.(); }),
+            btn('扫描', scan)));
+        if (found) container.append(scanBox());
         if (editing && !editing.ref) container.append(editor(editing));
         container.append(listEl());
         function listEl() {

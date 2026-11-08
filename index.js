@@ -85,6 +85,7 @@ const keyKeeper = createKeyKeeper({
     confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
     proxy: {
         names: () => (oai.proxies || []).map(p => p.name),
+        list: () => (oai.proxies || []).map(p => ({ name: p.name, url: p.url, password: p.password })),
         add: ({ name, url, password }) => {
             if (!Array.isArray(oai.proxies)) throw new Error('这版酒馆找不到反代列表');
             oai.proxies.push({ name, url, password });

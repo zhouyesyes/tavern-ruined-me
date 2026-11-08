@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
-import { classifyField, normalizeUrl, newKey, maskKey, searchKeys, parseModels, freeProxyName } from '../src/keys.mjs';
+import { classifyField, scanSettings, normalizeUrl, newKey, maskKey, searchKeys, parseModels, freeProxyName } from '../src/keys.mjs';
 import { createKeyKeeper } from '../src/keysUI.mjs';
 
 test('认框：密钥框、地址框，别的不认', () => {
@@ -42,9 +42,9 @@ function setup() {
         <div id="box"></div></body>`, { pretendToBeVisual: true });
     const document = dom.window.document;
     const ctx = { extensionSettings: {}, saveSettingsDebounced() {} };
-    const toasts = []; const proxies = [{ name: '主力', url: 'x', password: 'y' }];
+    const toasts = []; const proxies = [{ name: '主力', url: 'https://relay.com/v1', password: 'sk-relay-123' }, { name: 'None', url: '', password: '' }];
     const keeper = createKeyKeeper({ document, getContext: () => ctx, toast: (k, m) => toasts.push([k, m]), confirm: async () => true,
-        proxy: { names: () => proxies.map(p => p.name), add: p => proxies.push(p) },
+        proxy: { names: () => proxies.map(p => p.name), list: () => proxies, add: p => proxies.push(p) },
         probe: async (url, key) => { if (key !== 'sk-good') throw new Error('401'); return ['m2', 'm1']; } });
     return { dom, document, ctx, keeper, toasts, proxies };
 }
@@ -89,7 +89,7 @@ test('新建时去掉「也放进酒馆的反代列表」就不放', () => {
     inputs[1].value = 'https://img.com'; inputs[2].value = 'sk-img';
     ed.querySelector('input[type=checkbox]').checked = false;
     [...ed.querySelectorAll('button')].find(b => b.textContent === '保存').click();
-    assert.equal(x.proxies.length, 1); assert.equal(x.keeper.store().keys[0].proxyName, '');
+    assert.equal(x.proxies.length, 2); assert.equal(x.keeper.store().keys[0].proxyName, '');
 });
 
 test('框在弹窗里：小钥匙和选单放进那个弹窗（不然会被弹窗盖住）；不在弹窗里就放在页面上', () => {
@@ -105,4 +105,38 @@ test('框在弹窗里：小钥匙和选单放进那个弹窗（不然会被弹�
     assert.equal(hu.value, 'https://a.com/v1'); assert.equal(d.getElementById('hk').value, 'sk-1');
     d.getElementById('u').focus();
     assert.equal(d.querySelector('.tvrm-key-pill').parentElement, d.body);
+});
+
+test('扫描：找出各插件存的地址+密钥（含列表里的、嵌套的），跳过编号、关键词、我们自己', () => {
+    const settings = {
+        imageGen: { apiUrl: 'https://img.com/v1', apiKey: 'sk-img-123456', model: 'flux' },
+        translator: { channels: [{ name: '翻译主力', endpoint: 'https://tr.com', token: 'tok-abcdefgh' }, { name: '空的', endpoint: '', token: '' }] },
+        stSecret: { api_key_custom: '0b5e7f1a-1234-4abc-9def-001122334455' },
+        lore: { keyword: 'dragonslayer', key: 'short' },
+        loneKey: { secret: 'sk-lonely-999' },
+        tavern_ruined_me_keys: { keys: [{ url: 'https://mine.com', key: 'sk-mine-0000' }] },
+    };
+    const r = scanSettings(settings, ['tavern_ruined_me_keys']);
+    const by = n => r.find(f => f.source === n);
+    assert.equal(by('imageGen').url, 'https://img.com/v1'); assert.equal(by('imageGen').key, 'sk-img-123456');
+    assert.equal(by('translator').name, '翻译主力'); assert.match(by('translator').path, /channels › #1 › token/);
+    assert.equal(by('loneKey').url, ''); assert.equal(by('loneKey').key, 'sk-lonely-999');
+    assert.equal(by('stSecret'), undefined); assert.equal(by('lore'), undefined); assert.equal(by('tavern_ruined_me_keys'), undefined);
+    assert.equal(r.length, 3);
+});
+
+test('扫描按钮：列出酒馆反代列表和插件里的，已有的不勾，勾了才收', () => {
+    const x = setup(); const d = x.document; const box = d.getElementById('box');
+    x.ctx.extensionSettings.imageGen = { apiUrl: 'https://img.com/v1', apiKey: 'sk-img-123456' };
+    x.keeper.store().keys.push(newKey({ name: '已有', url: 'https://relay.com/v1', key: 'sk-relay-123' }));
+    x.keeper.render(box);
+    [...box.querySelectorAll('button')].find(b => b.textContent === '扫描').click();
+    const rows = [...box.querySelectorAll('.tvrm-scan-row')];
+    assert.equal(rows.length, 2);
+    const relay = rows.find(r => /酒馆反代列表/.test(r.textContent)); assert.ok(relay.classList.contains('is-have')); assert.equal(relay.querySelector('input').checked, false);
+    const img = rows.find(r => /imageGen/.test(r.textContent)); assert.equal(img.querySelector('input').checked, true);
+    [...box.querySelectorAll('button')].find(b => b.textContent === '收进钥匙本').click();
+    const keys = x.keeper.store().keys; assert.equal(keys.length, 2);
+    assert.equal(keys[1].url, 'https://img.com/v1'); assert.match(keys[1].note, /imageGen/);
+    assert.equal(box.querySelector('.tvrm-scan'), null);
 });
