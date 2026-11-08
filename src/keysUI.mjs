@@ -194,9 +194,13 @@ export function createKeyKeeper(host) {
     function place(el) {
         if (!pill) return;
         if (!el.isConnected) { hidePill(); return; }
-        pill.style.visibility = el.offsetWidth && el.offsetHeight ? '' : 'hidden';
-        pill.style.top = el.offsetTop + Math.max(0, (el.offsetHeight - 26) / 2) + 'px';
-        pill.style.left = el.offsetLeft + Math.max(0, el.offsetWidth - 30) + 'px';
+        const st = pill.style;
+        st.setProperty('position', 'absolute', 'important'); st.setProperty('margin', '0', 'important');
+        st.setProperty('width', '26px', 'important'); st.setProperty('height', '26px', 'important'); st.setProperty('padding', '0', 'important');
+        st.setProperty('transform', 'none', 'important'); st.setProperty('float', 'none', 'important');
+        st.visibility = el.offsetWidth && el.offsetHeight ? '' : 'hidden';
+        st.setProperty('top', el.offsetTop + Math.max(0, (el.offsetHeight - 26) / 2) + 'px', 'important');
+        st.setProperty('left', el.offsetLeft + Math.max(0, el.offsetWidth - 30) + 'px', 'important');
     }
     function showPill(el, kind) {
         hidePill();
@@ -209,6 +213,19 @@ export function createKeyKeeper(host) {
         pill.addEventListener('click', e => { e.preventDefault(); openSheet(kind); });
         el.after(pill);
         follow = el; place(el);
+    }
+    // 框外面会把超出部分剪掉的那个盒子（overflow 不是 visible）的可见范围；没有就是屏幕可见的那块
+    function clipBox(el) {
+        const win = doc.defaultView; const vv = win.visualViewport;
+        let box = { top: vv?.offsetTop || 0, bottom: (vv?.offsetTop || 0) + (vv?.height || win.innerHeight) };
+        for (let p = el.parentElement; p && p !== doc.body; p = p.parentElement) {
+            const cs = win.getComputedStyle(p);
+            if (/(hidden|auto|scroll|clip)/.test(cs.overflowY + cs.overflow)) {
+                const r = p.getBoundingClientRect();
+                box = { top: Math.max(box.top, r.top), bottom: Math.min(box.bottom, r.bottom) };
+            }
+        }
+        return box;
     }
     function openSheet(kind) {
         closeSheet();
@@ -227,11 +244,22 @@ export function createKeyKeeper(host) {
             h('div', { class: 'tvrm-key-sheet-head' }, h('b', null, kind === 'url' ? '填地址（密钥一起）' : '填密钥（地址一起）'), btn('关', closeSheet, 'tvrm-btn-mini')),
             store().keys.length > 6 ? search : null, list);
         draw();
-        sheet.style.top = el.offsetTop + el.offsetHeight + 4 + 'px';
-        sheet.style.left = el.offsetLeft + 'px';
-        sheet.style.width = Math.max(220, el.offsetWidth) + 'px';
+        const st = sheet.style;
+        st.setProperty('position', 'absolute', 'important'); st.setProperty('margin', '0', 'important');
+        st.left = el.offsetLeft + 'px';
+        st.width = Math.max(220, el.offsetWidth) + 'px';
         (pill || el).after(sheet);
-        sheet.scrollIntoView?.({ block: 'nearest' });
+        const r = el.getBoundingClientRect(); const box = clipBox(el);
+        const below = box.bottom - r.bottom - 8, above = r.top - box.top - 8;
+        const want = Math.min(sheet.scrollHeight, 320);
+        if (below >= Math.min(want, 160) || below >= above) {
+            st.top = el.offsetTop + el.offsetHeight + 4 + 'px';
+            st.maxHeight = Math.max(120, Math.min(320, below)) + 'px';
+        } else { // 下面不够：往上展开
+            const hgt = Math.max(120, Math.min(want, above));
+            st.maxHeight = hgt + 'px';
+            st.top = el.offsetTop - 4 - Math.min(sheet.scrollHeight, hgt) + 'px';
+        }
     }
     function initFill() {
         doc.addEventListener('focusin', e => {

@@ -431,3 +431,25 @@ test('原书里删掉的条目：别的聊天的小账里也去掉，不显示�
     assert.doesNotMatch(bookA.textContent, /条目 2|条目二/);
     const dot = bookA.querySelector('.tvrm-state'); assert.equal(dot.textContent, '');
 });
+
+test('在「所有聊天」里点别的聊天的圆点：先记成待办，下次进那个聊天时用上', async () => {
+    const x = setup(); await x.app.init();
+    const first = x.ctx.chatMetadata;
+    await x.toggle('条目一', true); await x.app.whenIdle(); // 第一个聊天：条目一开
+    x.ctx.chatMetadata = {}; x.ctx.chatId = 'second'; await x.app.onChatChanged(); await x.app.whenIdle();
+    x.document.querySelector('.tvrm-popup')?.remove(); x.app.renderPanel();
+    const other = [...x.document.querySelectorAll('.tvrm-chat')].find(c => /same-id/.test(c.querySelector('summary').textContent));
+    const bookA = [...other.querySelectorAll('.tvrm-book-ro')].find(b => /^A/.test(b.querySelector('summary').textContent));
+    bookA.open = true; bookA.dispatchEvent(new x.document.defaultView.Event('toggle')); await x.tick();
+    const dot = [...bookA.querySelectorAll('button.tvrm-dot')].find(b => /条目一/.test(b.getAttribute('aria-label')));
+    assert.ok(dot.classList.contains('is-on'));
+    dot.click();
+    assert.ok([...bookA.querySelectorAll('button.tvrm-dot')].find(b => /条目一/.test(b.getAttribute('aria-label'))).classList.contains('is-off'), '圆点马上变');
+    assert.match(other.querySelector('summary').textContent, /有改动/);
+    // 回到第一个聊天：用上，原书也跟着写
+    x.ctx.chatMetadata = first; x.ctx.chatId = 'same-id'; await x.app.onChatChanged(); await x.app.whenIdle();
+    assert.equal(first.tavern_ruined_me.slots.world.entries.A['1'], false);
+    assert.equal(x.books.A.entries[1].disable, true);
+    const key = Object.keys(x.app.settings().world.index).find(k => k.endsWith('|same-id'));
+    assert.equal(x.app.settings().world.index[key].pending, undefined, '用完就清掉');
+});
