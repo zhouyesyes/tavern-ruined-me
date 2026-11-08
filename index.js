@@ -1,7 +1,7 @@
 // 酒馆你害我不浅 —— 入口。三格：世界书 / 预设 / API，共用「跟着聊天走」。
 import { eventSource, event_types } from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
-import { world_names, loadWorldInfo, saveWorldInfo } from '../../../world-info.js';
+import { world_names, selected_world_info, world_info, loadWorldInfo, saveWorldInfo } from '../../../world-info.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { createApp } from './src/ui.mjs';
 
@@ -9,6 +9,7 @@ const app = createApp({
     document,
     getContext,
     worldNames: () => world_names,
+    bindings: () => ({ global: selected_world_info, charLore: world_info.charLore }),
     loadWorldInfo,
     saveWorldInfo,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
@@ -22,6 +23,9 @@ const app = createApp({
 
 jQuery(() => {
     app.init();
+    for (const type of [event_types.WORLDINFO_UPDATED, event_types.WORLDINFO_SETTINGS_UPDATED]) {
+        if (type) eventSource.on(type, app.onWorldChanged);
+    }
     eventSource.on(event_types.WORLDINFO_ENTRIES_LOADED, app.onEntriesLoaded);
     eventSource.on(event_types.CHAT_CHANGED, app.onChatChanged);
     eventSource.on(event_types.CHAT_CREATED, app.onChatCreated);

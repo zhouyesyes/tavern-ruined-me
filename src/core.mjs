@@ -14,7 +14,7 @@ export function defaultSettings() {
     return {
         v: 1,
         // 世界书：books = 按条目分组管理的书；wholeBooks = 只做整本开关的书
-        world: { books: {}, wholeBooks: [], wholeMeta: {} },
+        world: { books: {}, wholeBooks: [], wholeMeta: {}, physical: {} },
         preset: {},
         api: {},
     };
@@ -130,6 +130,9 @@ export function resolveEntry(settings, chat, book, uid, originalDisable = false)
     uid = String(uid);
     const cfg = settings.world.books[book];
     if (bookMeta(settings, book)?.restored) return null;
+    if (chat?.books?.[book] === false) return false;
+    const explicit = chat?.entries?.[book]?.[uid];
+    if (typeof explicit === 'boolean') return explicit;
     if (cfg) {
         const bucket = bucketOf(cfg, uid);
         if (bucket === BUCKET.FREE) return null;
@@ -206,4 +209,50 @@ export function entrySub(entry, max = 40) {
     const keys = Array.isArray(entry.key) ? entry.key.filter(Boolean).join('、') : '';
     const s = keys || (entry.content || '').replace(/\s+/g, ' ').trim();
     return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+// 与酒馆 getCharacterLore 一样按角色文件名找额外绑定，不猜显示名。
+export function boundBookNames(context, binding, available) {
+    const names = new Set(binding?.global || []);
+    const ids = context.groupId
+        ? (context.groups?.find(g => String(g.id) === String(context.groupId))?.members || [])
+            .map(avatar => context.characters?.findIndex(c => c.avatar === avatar)).filter(i => i >= 0)
+        : [context.characterId];
+    for (const id of ids) {
+        const character = context.characters?.[id];
+        if (!character) continue;
+        const primary = character.data?.extensions?.world;
+        if (primary) names.add(primary);
+        const file = character.avatar?.replace(/\.[^/.]+$/, '');
+        for (const n of binding?.charLore?.find(c => c.name === file)?.extraBooks || []) names.add(n);
+    }
+    return available.filter(n => names.has(n));
+}
+
+// physical 记录插件最后核对的原书开关，外部更改只合入当前聊天。
+export function reconcileBook(settings, chat, name, data, reset = false) {
+    chat.entries ??= {};
+    chat.books ??= {};
+    chat.groups ??= {};
+    chat.entries[name] ??= {};
+    settings.world.physical ??= {};
+    const previous = settings.world.physical[name];
+    let external = false;
+    const observed = {};
+    for (const entry of Object.values(data?.entries || {})) {
+        const uid = String(entry.uid);
+        const on = entry.disable !== true;
+        observed[uid] = on;
+        if (reset || !previous || (uid in previous && previous[uid] !== on)) {
+            chat.entries[name][uid] = on;
+            external = true;
+        } else if (!(uid in chat.entries[name])) {
+            const legacy = resolveEntry(settings, chat, name, uid, entry.disable === true);
+            chat.entries[name][uid] = legacy ?? on;
+        }
+    }
+    if (external || chat.books[name] === undefined) chat.books[name] = true;
+    for (const uid of Object.keys(chat.entries[name])) if (!(uid in observed)) delete chat.entries[name][uid];
+    settings.world.physical[name] = observed;
+    return external;
 }
