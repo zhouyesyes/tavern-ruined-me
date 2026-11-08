@@ -120,3 +120,34 @@
 .tvrm-entry-tools .tvrm-edit { font-size: .8em; padding: 4px 6px; margin: 0; }
 .tvrm-editor { display: flex; flex-direction: column; gap: 8px; }
 .tvrm-card [hidden] { display: none !important; }
+
+/* ---- 0.3.0：面板管理 / 弹窗选择，整体收小、按钮横排 ---- */
+.tvrm-panel, .tvrm-popup { font-size: 12px; }
+.tvrm-panel .menu_button, .tvrm-popup .menu_button { font-size: 11px; padding: 3px 7px; }
+.tvrm-actions { flex-direction: row; flex-wrap: nowrap; }
+.tvrm-heading { margin: 4px 0 0; font-size: 12px; color: var(--tvrm-dim); font-weight: 600; }
+.tvrm-dim { color: var(--tvrm-dim); font-size: 11px; }
+.tvrm-title { margin: 0 0 6px; font-size: 14px; }
+.tvrm-card > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 7px 10px; }
+.tvrm-card > summary .tvrm-name { font-weight: 600; min-width: 0; }
+.tvrm-card > summary .tvrm-count { flex: none; }
+.tvrm-card-body { padding: 6px 10px 8px; gap: 6px; }
+/* 分组：一排矮矮的小标签 */
+.tvrm-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tvrm-chip { all: unset; box-sizing: border-box; cursor: pointer; padding: 1px 9px; line-height: 20px; font-size: 11px;
+    border: 1px solid var(--tvrm-line); border-radius: 11px; color: var(--tvrm-dim); white-space: nowrap; }
+.tvrm-chip.is-on { color: var(--tvrm-text); border-color: var(--tvrm-accent); background: color-mix(in srgb, var(--tvrm-accent) 18%, transparent); }
+.tvrm-chip-add { border-style: dashed; }
+.tvrm-group-edit { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 0; border: 0; }
+.tvrm-group-edit input { flex: 1 1 90px; min-width: 0; height: 26px; font-size: 12px; }
+.tvrm-entries { padding: 0; }
+.tvrm-entry-section h4 { margin: 8px 0 2px; font-size: 11px; color: var(--tvrm-dim); }
+.tvrm-entry { display: flex; align-items: center; gap: 5px; border-bottom: 1px solid color-mix(in srgb, var(--tvrm-line) 50%, transparent); padding: 3px 0; }
+.tvrm-entry .tvrm-name { flex: 1; min-width: 0; font-size: 12px; }
+.tvrm-entry .tvrm-bucket { width: auto; max-width: 38%; min-width: 64px; font-size: 11px; margin: 0; padding: 1px 2px; }
+.tvrm-foot { display: flex; gap: 10px; justify-content: flex-start; border-top: 1px solid var(--tvrm-line); padding-top: 4px; }
+.tvrm-foot .tvrm-restore { padding: 2px 0; font-size: 11px; }
+.tvrm-pop-book h4 { margin: 10px 0 2px; font-size: 13px; }
+.tvrm-pop-group { margin: 2px 0; }
+.tvrm-pop-group > summary { cursor: pointer; font-size: 11px; color: var(--tvrm-dim); padding: 3px 0; }
+.tvrm-pop-group .tvrm-row { padding: 5px 2px; font-size: 13px; }

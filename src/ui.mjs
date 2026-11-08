@@ -15,6 +15,9 @@ export function createApp(host) {
     let ready = null;
     let selectedBook = null;
     let chatPopup = null;
+    const openBooks = new Set(); // 面板里展开的书，默认都折叠
+    const filters = new Map(); // 每本书当前点中的分组标签
+    let popupWantedAt = 0; // 新开聊天后要弹「这个聊天开哪些」
     const managementChats = new Map();
     const displayChat = name => bookNames().includes(name) ? chatWorld() : managementChats.get(name);
     let queue = Promise.resolve();
@@ -73,7 +76,9 @@ export function createApp(host) {
     }
     function ensureBook(name) {
         const s = settings();
-        if (!s.world.books[name] && !s.world.wholeBooks.includes(name)) s.world.books[name] = newBookCfg();
+        if (s.world.books[name]) return;
+        // 旧版「整本开关」的书也改成按条目分类；备份和原来的设置接过来，wholeBooks 里的记录原样留着
+        s.world.books[name] = { ...newBookCfg(), ...(s.world.wholeBooks.includes(name) ? s.world.wholeMeta[name] : null) };
     }
     async function readBook(name) {
         const loaded = await host.loadWorldInfo(name);
@@ -116,6 +121,11 @@ export function createApp(host) {
         if (!current(t)) return;
         renderPanel();
         syncNative();
+        // 新开聊天：同步完再弹一次，让她选这个聊天开哪些条目
+        if (popupWantedAt && Date.now() - popupWantedAt < 30000 && bookNames().some(n => (entryCache.get(n) || []).length)) {
+            popupWantedAt = 0;
+            openChatPopup();
+        }
     }
     async function writePlan(t, name, data, chat, manual = false) {
         if (!current(t) || (!manual && !bookNames().includes(name))) return;
@@ -151,7 +161,7 @@ export function createApp(host) {
         const t = token();
         return enqueue(() => synchronize(t));
     }
-    const onChatCreated = onChatChanged;
+    const onChatCreated = () => { popupWantedAt = Date.now(); return onChatChanged(); };
     function onWorldChanged() {
         if (ownSave) return;
         // 绑定变化立即让旧界面失效；原书变化重新核对后再恢复本聊天选择。
@@ -245,89 +255,84 @@ export function createApp(host) {
         return h('label', { class: 'tvrm-row ' + cls + (checked ? '' : ' is-off') },
             h('span', { class: 'tvrm-name' }, name), h('span', { class: 'tvrm-switch' }, input, h('i')));
     }
-    function restoreAction(name, t) {
-        return h('button', { type: 'button', class: 'tvrm-restore', disabled: !bookMeta(settings(), name)?.backup, onclick: () => restoreBook(name, t) }, '恢复原书');
-    }
-    function wholeCard(name, t) {
-        const chat = displayChat(name);
-        const card = h('section', { class: 'tvrm-card' });
-        const header = switchRow({ name, checked: chat.books[name] !== false, cls: 'tvrm-master',
-            onToggle: on => changeChat(t, name, c => { c.books[name] = on; }) });
-        const tools = h('div', { class: 'tvrm-card-tools' }, button('删除', async () => {
-            if (!await confirm('从本面板移除「' + name + '」？原书和备份都会保留，可重新显示。') || !current(t)) return;
-            settings().world.hidden ??= [];
-            settings().world.hidden.push(name); saveSettings(); renderPanel();
-        }, 'tvrm-delete'));
-        card.append(h('div', { class: 'tvrm-book-header' }, header, tools), restoreAction(name, t));
-        return card;
-    }
-    function bookCard(name, t) {
-        const s = settings();
-        const cfg = s.world.books[name];
-        const chat = displayChat(name);
+    // 一本书的分类：常开、常关、自定义组；其余是未分类。弹窗和面板共用。
+    function bookSections(name) {
+        const cfg = settings().world.books[name];
         const entries = entryCache.get(name) || [];
-        const card = wholeCard(name, t);
-        const groups = h('details', { class: 'tvrm-group-settings' }, h('summary', null, '分组设置', h('span', { class: 'tvrm-count' }, String(cfg.groups.length))));
-        for (const g of cfg.groups) {
-            const input = h('input', { class: 'text_pole', value: g.name, 'aria-label': '分组名称' });
-            const feedback = h('small', { role: 'status', class: 'tvrm-save-feedback' });
-            const body = h('details', { class: 'tvrm-group-edit' });
-            const head = h('summary', null, h('span', { class: 'tvrm-name' }, g.name),
-                button('删除', async e => {
-                    e.preventDefault(); e.stopPropagation();
-                    if (!await confirm(`删除分组「${g.name}」？条目会回到未分组，原书条目不会删除。`) || !current(t)) return;
-                    removeGroup(cfg, g.id); saveSettings(); renderPanel();
-                }, 'tvrm-delete'), h('span', { class: 'tvrm-triangle', 'aria-hidden': 'true' }, '▸'));
-            body.append(head, h('div', { class: 'tvrm-group-edit-fields' }, input, button('保存', () => {
+        const cats = [{ id: BUCKET.ON, name: '常开' }, { id: BUCKET.OFF, name: '常关' }, ...cfg.groups];
+        const ids = new Set(cats.map(g => g.id));
+        const of = e => { const b = bucketOf(cfg, e.uid); return ids.has(b) ? b : BUCKET.FREE; };
+        const sections = [...cats, { id: BUCKET.FREE, name: '未分类' }].map(g => ({ ...g, custom: g.id !== BUCKET.ON && g.id !== BUCKET.OFF && g.id !== BUCKET.FREE, members: entries.filter(e => of(e) === g.id) }));
+        return { cfg, cats, sections, classified: entries.length - sections.at(-1).members.length, free: sections.at(-1).members.length };
+    }
+    // 管理面板里的一本书：默认折叠；小标签切换分组；每条只有归类和编辑
+    function bookCard(name, t) {
+        const { cfg, cats, sections, classified, free } = bookSections(name);
+        const card = h('details', { class: 'tvrm-card', open: openBooks.has(name) });
+        card.addEventListener('toggle', () => { if (card.open) openBooks.add(name); else openBooks.delete(name); });
+        card.append(h('summary', null, h('span', { class: 'tvrm-name' }, name), h('small', { class: 'tvrm-count' }, `分类 ${classified} · 未分类 ${free}`)));
+        const body = h('div', { class: 'tvrm-card-body' });
+        let pick = filters.get(name) || 'all';
+        if (pick !== 'all' && !sections.some(g => g.id === pick)) pick = 'all';
+        const select = id => { filters.set(name, id); openBooks.add(name); renderPanel(); };
+        const chip = (label, id, count) => h('button', { type: 'button', class: 'tvrm-chip' + (pick === id ? ' is-on' : ''), onclick: () => select(id) }, count === undefined ? label : `${label} ${count}`);
+        const chips = h('div', { class: 'tvrm-chips' }, chip('全部', 'all', classified + free),
+            sections.filter(g => g.id !== BUCKET.FREE && (g.custom || g.members.length)).map(g => chip(g.name, g.id, g.members.length)),
+            chip('未分类', BUCKET.FREE, free),
+            h('button', { type: 'button', class: 'tvrm-chip tvrm-chip-add', 'aria-label': '新建分组', onclick: () => {
                 if (!current(t)) return;
-                const value = input.value.trim();
-                if (!value) { feedback.textContent = '请填写组名'; return; }
-                g.name = value; saveSettings(); head.querySelector('.tvrm-name').textContent = value;
-                feedback.textContent = '已保存'; toast('success', '分组名称已保存');
-            }), feedback));
-            groups.append(body);
-        }
-        groups.append(button('＋ 新建分组', () => {
-            if (!current(t)) return;
-            cfg.groups.push({ id: newGroupId(), name: '新分组 ' + (cfg.groups.length + 1) }); saveSettings(); renderPanel();
-        }));
-        card.insertBefore(groups, card.lastChild);
-        const area = h('div', { class: 'tvrm-entries' });
-        const sections = [{ id: BUCKET.ON, name: '常开' }, { id: BUCKET.OFF, name: '常关' }, ...cfg.groups, { id: BUCKET.FREE, name: '未分组' }];
-        for (const group of sections) {
-            const members = entries.filter(e => {
-                const bucket = bucketOf(cfg, e.uid);
-                return group.id === BUCKET.FREE ? bucket === BUCKET.FREE || !sections.some(g => g.id === bucket) : bucket === group.id;
-            });
-            if (!members.length && group.id !== BUCKET.FREE) continue;
-            const section = h('section', { class: 'tvrm-entry-section' }, h('h4', null, `${group.name}（${members.length}）`));
-            for (const entry of members) {
-                const uid = String(entry.uid);
-                const row = h('div', { class: 'tvrm-entry' });
-                row.append(switchRow({ name: entryLabel(entry), checked: resolveEntry(s, chat, name, uid, entry.disable === true) ?? !entry.disable,
-                    onToggle: on => changeChat(t, name, c => { c.entries[name][uid] = on; }) }));
-                const select = h('select', { class: 'text_pole tvrm-bucket', 'aria-label': entryLabel(entry) + '归组' },
-                    sections.map(g => h('option', { value: g.id, selected: g.id === group.id }, g.name)));
-                select.addEventListener('change', () => {
+                const g = { id: newGroupId(), name: '新分组 ' + (cfg.groups.length + 1) };
+                cfg.groups.push(g); saveSettings(); select(g.id);
+            } }, '＋ 新建'));
+        body.append(chips);
+        const shown = sections.find(g => g.id === pick);
+        if (shown?.custom) {
+            const input = h('input', { class: 'text_pole', value: shown.name, 'aria-label': '分组名称' });
+            const feedback = h('small', { role: 'status', class: 'tvrm-save-feedback' });
+            body.append(h('div', { class: 'tvrm-group-edit' }, input,
+                button('保存', () => {
                     if (!current(t)) return;
-                    setBucket(cfg, uid, select.value); saveSettings();
-                    if (select.value === BUCKET.ON || select.value === BUCKET.OFF) changeChat(t, name, c => { c.entries[name][uid] = select.value === BUCKET.ON; });
+                    const value = input.value.trim();
+                    if (!value) { feedback.textContent = '请填写组名'; return; }
+                    const g = cfg.groups.find(x => x.id === shown.id); g.name = value; saveSettings();
+                    feedback.textContent = '已保存'; toast('success', '分组名称已保存');
+                    for (const el of card.querySelectorAll('.tvrm-chip.is-on')) el.textContent = `${value} ${shown.members.length}`;
+                }),
+                button('删除分组', async () => {
+                    if (!await confirm(`删除分组「${shown.name}」？条目会回到未分类，原书条目不会删除。`) || !current(t)) return;
+                    removeGroup(cfg, shown.id); filters.delete(name); saveSettings(); renderPanel();
+                }, 'tvrm-delete'), feedback));
+        }
+        const area = h('div', { class: 'tvrm-entries' });
+        for (const g of sections) {
+            if (pick !== 'all' && g.id !== pick) continue;
+            if (pick === 'all' && !g.members.length) continue;
+            const section = h('section', { class: 'tvrm-entry-section' }, h('h4', null, `${g.name}（${g.members.length}）`));
+            for (const entry of g.members) {
+                const uid = String(entry.uid);
+                const sel = h('select', { class: 'text_pole tvrm-bucket', 'aria-label': entryLabel(entry) + '归组' },
+                    [{ id: BUCKET.FREE, name: '未分类' }, ...cats].map(x => h('option', { value: x.id, selected: x.id === g.id }, x.name)));
+                sel.addEventListener('change', () => {
+                    if (!current(t)) return;
+                    setBucket(cfg, uid, sel.value); saveSettings();
+                    if (sel.value === BUCKET.ON || sel.value === BUCKET.OFF) changeChat(t, name, c => { c.entries[name][uid] = sel.value === BUCKET.ON; });
                     else renderPanel();
                 });
-                row.append(h('div', { class: 'tvrm-entry-tools' }, h('small', { class: 'tvrm-sub' }, entrySub(entry)), select,
+                section.append(h('div', { class: 'tvrm-entry' }, h('span', { class: 'tvrm-name', title: entrySub(entry) }, entryLabel(entry)), sel,
                     button('编辑', () => editEntry(name, uid, t), 'tvrm-edit')));
-                section.append(row);
             }
+            if (!g.members.length) section.append(h('p', { class: 'tvrm-empty' }, '这一组还没有条目；在条目右边的下拉里选这个组。'));
             area.append(section);
         }
-        card.insertBefore(area, card.lastChild);
-        const toggle = button('▾', () => {
-            const collapsed = !area.hidden;
-            area.hidden = collapsed; groups.hidden = collapsed;
-            toggle.textContent = collapsed ? '▸' : '▾'; toggle.setAttribute('aria-expanded', String(!collapsed));
-        }, 'tvrm-collapse');
-        toggle.setAttribute('aria-label', '展开或折叠世界书条目'); toggle.setAttribute('aria-expanded', 'true');
-        card.querySelector('.tvrm-card-tools').append(toggle);
+        body.append(area);
+        const hasBackup = !!bookMeta(settings(), name)?.backup;
+        body.append(h('div', { class: 'tvrm-foot' },
+            h('button', { type: 'button', class: 'tvrm-restore', disabled: !hasBackup, onclick: () => restoreBook(name, t) }, '恢复原书'),
+            h('button', { type: 'button', class: 'tvrm-restore tvrm-delete', onclick: async () => {
+                if (!await confirm('从本面板移除「' + name + '」？原书和备份都会保留，可重新显示。') || !current(t)) return;
+                (settings().world.hidden ??= []).push(name); saveSettings(); renderPanel();
+            } }, '从面板移除')));
+        card.append(body);
         return card;
     }
     async function editEntry(name, uid, t) {
@@ -366,11 +371,15 @@ export function createApp(host) {
             [name]: Object.fromEntries(Object.values(data.entries).map(e => [String(e.uid), !e.disable])),
         } });
     }
-    async function showChat(status = false) {
+    // 这个聊天开哪些：只有分了类的条目和没分类的条目，勾一下就走
+    async function showChat() {
         await flushWriteBack();
+        return openChatPopup();
+    }
+    async function openChatPopup() {
         if (!current(ready)) return;
         const content = h('div', { class: 'tvrm-popup' });
-        const popup = { content, status };
+        const popup = { content };
         chatPopup = popup;
         renderChatPopup();
         try { await host.popup(content, null); }
@@ -378,12 +387,29 @@ export function createApp(host) {
     }
     function renderChatPopup() {
         if (!chatPopup || !current(ready)) return;
-        const { content, status } = chatPopup;
+        const { content } = chatPopup;
         const t = token();
-        content.replaceChildren(h('h3', null, status ? '世界书状态' : '重选当前聊天'));
-        for (const name of bookNames()) content.append(settings().world.books[name] && settings().world.books[name].mode !== 'whole' ? bookCard(name, t) : wholeCard(name, t));
-        if (!bookNames().length) content.append('当前角色没有绑定世界书，也没有启用的全局世界书。');
-        if (status) for (const el of content.querySelectorAll('input, select, button')) el.disabled = true;
+        const s = settings(), chat = chatWorld();
+        // 重画会丢滚动位置，先记下来
+        const scrolls = []; for (let p = content; p; p = p.parentElement) scrolls.push([p, p.scrollTop]);
+        content.replaceChildren(h('h3', { class: 'tvrm-title' }, '这个聊天开哪些'));
+        for (const name of bookNames()) {
+            const { sections } = bookSections(name);
+            const book = h('section', { class: 'tvrm-pop-book' }, h('h4', null, name));
+            for (const g of sections) {
+                if (!g.members.length) continue;
+                const box = h('details', { class: 'tvrm-pop-group', open: true }, h('summary', null, `${g.name}（${g.members.length}）`));
+                for (const entry of g.members) {
+                    const uid = String(entry.uid);
+                    box.append(switchRow({ name: entryLabel(entry), checked: resolveEntry(s, chat, name, uid, entry.disable === true) ?? !entry.disable,
+                        onToggle: on => changeChat(t, name, c => { c.entries[name][uid] = on; c.books[name] = true; }) }));
+                }
+                book.append(box);
+            }
+            content.append(book);
+        }
+        if (!bookNames().length) content.append(h('p', { class: 'tvrm-empty' }, '当前角色没有绑定世界书，也没有启用的全局世界书。'));
+        for (const [p, top] of scrolls) p.scrollTop = top;
     }
     function renderPanel() {
         if (!panelRoot || !current(ready)) return;
@@ -391,38 +417,11 @@ export function createApp(host) {
         const t = token();
         panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => {}, 'tvrm-tab is-active'),
             h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'), h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
-        panelRoot.append(h('div', { class: 'tvrm-tabs' }, button('重选当前聊天', () => showChat()), button('看世界书状态', () => showChat(true))));
-        const chooser = h('select', { class: 'text_pole', 'aria-label': '世界书下拉选择' },
-            h('option', { value: '' }, '当前聊天选定'), allNames().map(n => h('option', { value: n, selected: n === selectedBook }, n)));
-        chooser.addEventListener('change', () => {
-            selectedBook = chooser.value || null;
-            const name = selectedBook;
-            enqueue(async () => {
-                if (!current(t)) return;
-                if (name && !bookNames().includes(name)) await loadManagement(name, t);
-                if (current(t)) renderPanel();
-            });
-        });
-        panelRoot.append(chooser);
-        if (selectedBook && !allNames().includes(selectedBook)) selectedBook = null;
-        if (selectedBook) {
-            const name = selectedBook;
-            const cfg = settings().world.books[name];
-            const mode = h('select', { class: 'text_pole', 'aria-label': '世界书管理方式' },
-                h('option', { value: 'entries', selected: cfg && cfg.mode !== 'whole' }, '按条目分组'),
-                h('option', { value: 'whole', selected: !cfg || cfg.mode === 'whole' }, '整本开关'));
-            mode.addEventListener('change', () => {
-                if (!current(t)) return;
-                // 切换显示方式保留原分组、归属和首次备份。
-                settings().world.books[name] ??= { ...newBookCfg(), ...settings().world.wholeMeta[name] };
-                settings().world.books[name].mode = mode.value;
-                saveSettings(); renderPanel();
-            });
-            panelRoot.append(mode);
-            if (displayChat(name)) panelRoot.append(cfg && cfg.mode !== 'whole' ? bookCard(name, t) : wholeCard(name, t));
-            return;
-        }
-        if (!bookNames().length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '当前角色没有绑定世界书，也没有启用的全局世界书。'));
+        panelRoot.append(h('div', { class: 'tvrm-actions' }, button('这个聊天开哪些', () => showChat())));
+        const bound = bookNames();
+        panelRoot.append(h('h4', { class: 'tvrm-heading' }, `当前绑定的世界书（${bound.length}）`));
+        if (!bound.length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '当前角色没有绑定世界书，也没有启用的全局世界书。'));
+        for (const name of bound) panelRoot.append(bookCard(name, t));
         const hidden = visibleNames().filter(n => settings().world.hidden?.includes(n));
         if (hidden.length) {
             const select = h('select', { class: 'text_pole', 'aria-label': '重新显示世界书' }, h('option', { value: '' }, '重新显示世界书…'), hidden.map(n => h('option', { value: n }, n)));
@@ -432,7 +431,26 @@ export function createApp(host) {
             });
             panelRoot.append(select);
         }
-        for (const name of bookNames()) panelRoot.append(settings().world.books[name] && settings().world.books[name].mode !== 'whole' ? bookCard(name, t) : wholeCard(name, t));
+        // 没绑到当前角色的书：只能在这里管分类，不会进「这个聊天开哪些」
+        if (selectedBook && !allNames().includes(selectedBook)) selectedBook = null;
+        const others = allNames().filter(n => !bound.includes(n));
+        if (others.length) {
+            const chooser = h('select', { class: 'text_pole', 'aria-label': '管理其他世界书' },
+                h('option', { value: '' }, '管理其他世界书…'), others.map(n => h('option', { value: n, selected: n === selectedBook }, n)));
+            chooser.addEventListener('change', () => {
+                selectedBook = chooser.value || null;
+                const name = selectedBook;
+                enqueue(async () => {
+                    if (!current(t)) return;
+                    if (name) await loadManagement(name, t);
+                    if (current(t)) renderPanel();
+                });
+            });
+            panelRoot.append(chooser);
+            if (selectedBook && others.includes(selectedBook) && managementChats.has(selectedBook)) {
+                panelRoot.append(h('small', { class: 'tvrm-dim' }, '这本没绑到当前角色，只管分类，不影响这个聊天。'), bookCard(selectedBook, t));
+            }
+        }
     }
     function mountPanel() {
         const target = doc.getElementById('extensions_settings2') || doc.getElementById('extensions_settings');
