@@ -31,6 +31,7 @@ export function normalizeSettings(raw) {
     for (const name of Object.keys(out.world.books)) {
         const b = out.world.books[name] || {};
         out.world.books[name] = {
+            ...b,
             groups: Array.isArray(b.groups) ? b.groups : [],
             assign: b.assign && typeof b.assign === 'object' ? b.assign : {},
             restored: b.restored === true,
