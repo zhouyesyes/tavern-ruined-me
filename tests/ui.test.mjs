@@ -42,7 +42,12 @@ test('仅当前角色主书和全局书；面板默认折叠；任何时候都�
     const cards = [...document.querySelectorAll('.tvrm-card[data-zone="bound"]')];
     assert.equal(cards.length, 2);
     assert.ok(cards.every(c => !c.open && !c.textContent.includes('Other')));
-    assert.match(cards[0].querySelector('summary').textContent, /分类0 · 开1\/2/);
+    assert.match(cards[0].querySelector('summary').textContent, /开1\/2/);
+    assert.doesNotMatch(cards[0].querySelector('summary').textContent, /分类/); // 当前聊天这块只管开不开
+    assert.ok(cards.every(c => !c.querySelector('.tvrm-chips, .tvrm-bucket')), '当前聊天这块没有分组标签和归组下拉');
+    const allCards = [...document.querySelectorAll('.tvrm-card[data-zone="all"]')];
+    assert.ok(allCards.some(c => c.querySelector('.tvrm-chips')), '所有世界书那块还能分类');
+    assert.ok(allCards.every(c => !c.querySelector('.tvrm-mini-switch')), '所有世界书那块不放开关');
     assert.equal(document.querySelector('.tvrm-group-settings'), null);
     assert.equal(document.querySelector('[aria-label="管理其他世界书"]'), null);
     await app.onChatCreated(); await tick();
