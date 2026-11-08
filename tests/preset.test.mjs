@@ -32,7 +32,9 @@ function setup(slow = 25) {
     const enter = async (key, label) => { chat = { key, label }; const p = keeper.onChatChanged(); keeper.onPresetEvent(); await p; await tick(); };
     const manual = async (name, order) => { // 她在预设页手动改：先改酒馆里的状态，再收到事件
         if (name !== s.name) { s.name = name; s.order = presets[name].map(x => ({ ...x })); } if (order) s.order = order; keeper.onPresetEvent(); };
-    return { keeper, s, presets, enter, manual, tick, document, ctx, toasts };
+    // 酒馆真实的顺序：先换「当前聊天」，中间来一次 SETTINGS_UPDATED（预设还是旧的），再发 CHAT_CHANGED
+    const enterLikeTavern = async (key, label) => { chat = { key, label }; keeper.onPresetEvent(); const p = keeper.onChatChanged(); keeper.onPresetEvent(); await p; await tick(); };
+    return { keeper, s, presets, enter, enterLikeTavern, manual, tick, document, ctx, toasts };
 }
 const on = s => s.order.map(x => x.identifier + (x.enabled ? '+' : '-')).join(',');
 
@@ -144,4 +146,15 @@ test('存档点名字改名：输入框 + 保存，保存才生效', async () =>
     assert.equal(chat.saves[0].name, '存档一'); // 没点保存还没变
     [...set.querySelectorAll('button')].find(b => b.textContent === '保存').click();
     assert.equal(chat.saves[0].name, '民国夜');
+});
+
+test('切聊天时酒馆先换当前聊天、中间来一次设置事件：不能把旧预设记到新聊天名下', async () => {
+    const x = setup();
+    await x.enterLikeTavern('A', '聊天A');
+    await x.enterLikeTavern('B', '聊天B'); await x.manual('P2'); // B 用 P2
+    for (let i = 0; i < 3; i++) {
+        await x.enterLikeTavern('A', '聊天A'); assert.equal(x.s.name, 'P1', 'A ' + i);
+        await x.enterLikeTavern('B', '聊天B'); assert.equal(x.s.name, 'P2', 'B ' + i);
+    }
+    const chats = x.keeper.store().chats; assert.equal(chats.A.preset, 'P1'); assert.equal(chats.B.preset, 'P2');
 });

@@ -20,11 +20,17 @@ const orderEntry = () => {
     return pm.getPromptOrderForCharacter(pm.activeCharacter);
 };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-// 等换上的预设载完：新酒馆用它自己的完成信号；旧酒馆没有，就等预设名换过来，再多等一下让内容（含开关顺序）载进来，最多 8 秒
-async function presetLoaded(name) {
-    if (typeof oai.getPresetApplicationPromise === 'function') return oai.getPresetApplicationPromise();
-    for (let t = 0; t < 80 && oai.oai_settings?.preset_settings_openai !== name; t++) await wait(100);
-    await wait(600);
+// 等换上的预设载完：新酒馆（1.19 起）用它自己的完成信号；旧一点的（比如 1.18）没有，
+// 就等酒馆换完预设内容后发的 OAI_PRESET_CHANGED_AFTER（1.18 是在预设内容含开关顺序都载进来之后才发），最多 8 秒
+function presetApplied() {
+    if (typeof oai.getPresetApplicationPromise === 'function') return null;
+    const type = event_types.OAI_PRESET_CHANGED_AFTER;
+    if (!type) return wait(600);
+    return new Promise(resolve => {
+        const done = () => { eventSource.removeListener?.(type, done); resolve(); };
+        eventSource.on(type, done);
+        setTimeout(done, 8000);
+    });
 }
 const presetKeeper = createPresetKeeper({
     document,
@@ -58,8 +64,9 @@ const presetKeeper = createPresetKeeper({
             // 预设名 → 下拉选项值：新酒馆有 openai_setting_names；旧酒馆没有就照下拉里显示的名字找
             const value = oai.openai_setting_names?.[name] ?? [...(sel?.options || [])].find(o => o.textContent.trim() === name)?.value;
             if (value === undefined || !sel) throw new Error('酒馆里找不到预设「' + name + '」（可能被删了或改了名）');
+            const applied = presetApplied(); // 先开始听，再换（事件可能来得很快）
             jQuery(sel).val(String(value)).trigger('change');
-            await presetLoaded(name);
+            await (applied ?? oai.getPresetApplicationPromise());
         },
         entryName: id => oai.promptManager?.getPromptById?.(id)?.name || id,
     },
