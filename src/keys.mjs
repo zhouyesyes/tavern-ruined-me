@@ -89,3 +89,35 @@ export function classifyField(desc) {
     if (/^https?:\/\//i.test(str(desc.value)) && !NOT_URL.test(words)) return 'url';
     return null;
 }
+
+// ---- 扫描：把酒馆设置里各个插件存的「地址 + 密钥」找出来（只读，不改它们） ----
+const KEY_PROP = /api[_-]?key|apikey|secret|token|password|passwd|pwd|(^|[_-])key$/i;
+const URL_PROP = /url|endpoint|base|host|server|proxy|api$/i;
+const NAME_PROP = /^(name|label|title|alias|nickname|备注|名称)$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i; // 酒馆密钥的编号，不是密钥本身
+const looksKey = v => typeof v === 'string' && v.trim().length >= 8 && !/\s/.test(v.trim()) && !/^https?:\/\//i.test(v.trim()) && !UUID.test(v.trim());
+const looksUrl = v => typeof v === 'string' && /^https?:\/\/\S+$/i.test(v.trim());
+
+// settings：extensionSettings；skip：不扫的插件（比如我们自己）。返回 [{ source, path, name, url, key }]
+export function scanSettings(settings, skip = []) {
+    const out = []; const seen = new WeakSet();
+    const walk = (obj, path, depth) => {
+        if (!obj || typeof obj !== 'object' || seen.has(obj) || depth > 8) return;
+        seen.add(obj);
+        if (!Array.isArray(obj)) {
+            const props = Object.keys(obj);
+            for (const kp of props) {
+                if (!KEY_PROP.test(kp) || NOT_KEY.test(kp) || !looksKey(obj[kp])) continue;
+                const up = props.find(p => p !== kp && URL_PROP.test(p) && looksUrl(obj[p]));
+                const np = props.find(p => NAME_PROP.test(p) && typeof obj[p] === 'string' && obj[p].trim());
+                out.push({ source: path[0], path: [...path, kp].join(' › '), name: np ? obj[np].trim() : '', url: up ? obj[up].trim() : '', key: obj[kp].trim() });
+            }
+        }
+        for (const [k, v] of Object.entries(obj)) if (v && typeof v === 'object') walk(v, [...path, Array.isArray(obj) ? `#${Number(k) + 1}` : k], depth + 1);
+    };
+    for (const [name, value] of Object.entries(settings || {})) if (!skip.includes(name)) walk(value, [name], 0);
+    // 同一个地址同一把密钥只留一条
+    const uniq = new Map();
+    for (const f of out) { const id = normalizeUrl(f.url) + '|' + f.key; if (!uniq.has(id)) uniq.set(id, f); }
+    return [...uniq.values()];
+}
