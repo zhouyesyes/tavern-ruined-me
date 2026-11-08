@@ -28,6 +28,7 @@ export function createApp(host) {
     let ownSave = false;
     let lockToken = null; // 切聊天时上锁：读出新聊天自己的配置、写回原书完成前，任何开关变化都不记
     const locked = () => lockToken !== null && current(lockToken);
+    let missedWhileLocked = false; // 上锁期间收到过原书更新：解锁后再按聊天自己的配置还原一次
     const entryCache = new Map();
     const pending = new Map();
     function h(tag, attrs, ...kids) {
@@ -100,6 +101,11 @@ export function createApp(host) {
         if (restore) lockToken = t;
         try { await synchronizeInner(t, restore, s); }
         finally { if (lockToken === t) lockToken = null; } // 写回完成（或被新切换取代）才解锁
+        if (missedWhileLocked && lockToken === null && current(t)) {
+            missedWhileLocked = false;
+            const again = token();
+            enqueue(() => synchronize(again, true)); // 别的插件在上锁期间动过书：以聊天自己的配置再还原一遍，不记录
+        }
     }
     async function synchronizeInner(t, restore, s) {
         const chat = clone(chatWorld() || emptyWorldChat());
@@ -174,7 +180,7 @@ export function createApp(host) {
     const onChatCreated = () => onChatChanged(); // 新开聊天不再弹窗
     function onWorldChanged() {
         if (ownSave) return;
-        if (locked()) return; // 切聊天还没处理完：上一个聊天留在原书里的状态不是手动修改
+        if (locked()) { missedWhileLocked = true; return; } // 切聊天还没处理完：上一个聊天留在原书里的状态不是手动修改
         if (current(ready)) return scheduleWriteBack();
         // 还没读完这个聊天（或换了聊天）：按切聊天处理，以聊天自己存的选择为准
         const same = ready && ready.id === ctx().chatId && ready.character === ctx().characterId && ready.group === ctx().groupId && ready.meta === ctx().chatMetadata;

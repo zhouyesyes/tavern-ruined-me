@@ -306,3 +306,29 @@ test('跟着聊天走：A 改民国，切 B 仍是现代；B 改，切回 A 是�
         assert.deepEqual(metaA.tavern_ruined_me.slots.world.entries.A, { 1: false, 2: true });
     }
 });
+
+test('跟着聊天走：切聊天写回到一半，别的插件把书改回上个聊天的样子并发更新事件，不能记进新聊天，且最后原书回到新聊天的样子', async () => {
+    const x = setup(); await x.app.init();
+    await x.toggle('条目一', false); await x.toggle('条目二', true); await x.app.whenIdle(); // A 民国
+    const metaA = x.ctx.chatMetadata;
+    const metaB = { tavern_ruined_me: { v: 1, slots: { world: { groups: {}, books: { A: true, G: true }, entries: { A: { 1: true, 2: false }, G: { 3: true } } } } } };
+    const modern = () => [x.books.A.entries[1].disable, x.books.A.entries[2].disable];
+    const orig = x.host.loadWorldInfo;
+    let meddle = false, fired = 0;
+    x.host.loadWorldInfo = async n => {
+        // 写回 A 之后读 G 的时候：别的插件把 A 又改回民国，并通知世界书更新了
+        if (meddle && n === 'G' && fired++ === 1) { x.books.A.entries[1].disable = true; x.books.A.entries[2].disable = false; x.app.onWorldChanged(); }
+        return orig(n);
+    };
+    const sw = async (meta, id) => { x.ctx.chatMetadata = meta; x.ctx.chatId = id; await x.app.onChatChanged(); await x.run(); await x.run(); };
+    for (let i = 0; i < 3; i++) {
+        meddle = i === 0; fired = 0;
+        await sw(metaB, 'B');
+        meddle = false;
+        assert.deepEqual(modern(), [false, true], 'B 原书应是现代 第' + i);
+        assert.deepEqual(metaB.tavern_ruined_me.slots.world.entries.A, { 1: true, 2: false }, 'B 配置仍是现代 第' + i);
+        await sw(metaA, 'A');
+        assert.deepEqual(modern(), [true, false], 'A 原书应是民国 第' + i);
+        assert.deepEqual(metaA.tavern_ruined_me.slots.world.entries.A, { 1: false, 2: true });
+    }
+});
