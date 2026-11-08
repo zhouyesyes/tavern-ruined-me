@@ -134,6 +134,17 @@ export function createApp(host) {
             loaded.push([name, data]);
         }
         if (!current(t)) return;
+        // 在「所有聊天」里替这个聊天点过的开关（待办）：现在用上，然后清掉
+        const info = host.chatInfo?.(); const rec = info && s.world.index[info.key];
+        if (rec?.pending) {
+            for (const [book, m] of Object.entries(rec.pending)) {
+                if (!bookNames().includes(book)) continue;
+                chat.entries[book] ??= {};
+                for (const [uid, v] of Object.entries(m)) chat.entries[book][uid] = v;
+                chat.books[book] = true;
+            }
+            delete rec.pending;
+        }
         chat.binding = t.binding;
         setChatSlot(t.meta, 'world', chat);
         ready = t;
@@ -521,7 +532,7 @@ export function createApp(host) {
     // 别的聊天：只看。每本书开了几条，点开列出条目开没开（条目名字没读过就现读一下原书）
     function otherChat(key) {
         const books = settings().world.index[key]?.books || {};
-        const d = chatFold(key, false, tally(books));
+        const d = chatFold(key, false, tally(books) + (settings().world.index[key]?.pending ? ' · 有改动，进这个聊天时用上' : ''));
         const body = h('div', { class: 'tvrm-chat-body' });
         for (const [name, entries] of Object.entries(books)) {
             const on = Object.values(entries).filter(Boolean).length;
@@ -534,8 +545,16 @@ export function createApp(host) {
                 list.replaceChildren(...Object.entries(entries).filter(([uid]) => !cached || byUid.has(uid)).map(([uid, v]) => {
                     const entry = byUid.get(uid); const ekey = 'ro|' + key + '|' + name + '|' + uid;
                     const li = h('li', { class: 'tvrm-ro-entry' + (v ? '' : ' is-off') });
-                    const row = h('div', { class: 'tvrm-ro-row' },
-                        h('span', { class: 'tvrm-state ' + (v ? 'is-on' : 'is-off'), title: v ? '开' : '关', 'aria-label': v ? '开' : '关' }),
+                    const dot = h('button', { type: 'button', class: 'tvrm-state tvrm-dot ' + (v ? 'is-on' : 'is-off'), title: v ? '开（点一下关掉）' : '关（点一下打开）', 'aria-label': (entry ? entryLabel(entry) : '条目 ' + uid) + (v ? '开' : '关') });
+                    // 改别的聊天：那个聊天的配置存在它自己的聊天文件里，现在拿不到，先记成「待办」，下次进那个聊天时自动用上
+                    dot.addEventListener('click', () => {
+                        const rec = settings().world.index[key]; if (!rec) return;
+                        const next = !rec.books[name][uid];
+                        rec.books[name][uid] = next;
+                        ((rec.pending ??= {})[name] ??= {})[uid] = next;
+                        saveSettings(); draw(); recount();
+                    });
+                    const row = h('div', { class: 'tvrm-ro-row' }, dot,
                         h('span', { class: 'tvrm-name' }, entry ? entryLabel(entry) : '条目 ' + uid));
                     li.append(row);
                     if (entry) {
@@ -551,6 +570,10 @@ export function createApp(host) {
                     }
                     return li;
                 }));
+            };
+            const recount = () => {
+                book.querySelector('summary small').textContent = `开 ${Object.values(entries).filter(Boolean).length} / 共 ${Object.keys(entries).length}`;
+                d.querySelector('summary .tvrm-count').textContent = tally(books) + (settings().world.index[key]?.pending ? ' · 有改动，进这个聊天时用上' : '');
             };
             book.addEventListener('toggle', async () => {
                 if (!book.open) return;

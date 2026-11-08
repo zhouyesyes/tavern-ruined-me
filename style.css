@@ -236,7 +236,7 @@ details.tvrm-all > .tvrm-card { margin-top: 5px; }
 /* 点哪填哪：输入框右边的小钥匙，和从下面弹上来的选单（框在弹窗里时放进那个弹窗，见 keysUI.mjs 的 layerOf） */
 .tvrm-key-pill { position: absolute; z-index: 5; width: 26px; height: 26px; font-size: 12px; box-sizing: border-box; margin: 0; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);
     background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-.tvrm-key-sheet { position: absolute; z-index: 30; max-height: 50vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+.tvrm-key-sheet { position: absolute; z-index: 30; max-height: 320px; overflow-y: auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
     background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .3); }
 .tvrm-key-sheet-head { display: flex; align-items: center; justify-content: space-between; }
 .tvrm-key-sheet .text_pole { margin: 0; }
@@ -303,3 +303,15 @@ details.tvrm-lv1 > summary { font-size: 1.02em; font-weight: 700; padding: 4px 0
 .tvrm-entry-section > summary small { color: var(--tvrm-dim); }
 .tvrm-entry-section > .tvrm-entry-wrap { margin-left: 14px; padding-left: 8px; border-left: 1px solid color-mix(in srgb, var(--tvrm-line) 70%, transparent); }
 .tvrm-entry .tvrm-bucket { flex: 0 0 auto; width: auto; min-width: 0; max-width: 5.5em; height: 22px; line-height: 20px; font-size: 11px; padding: 0 4px; margin: 0; border-radius: 6px; }
+/* 0.8.7：别的聊天里的圆点能点（点的范围比圆点大一圈，好点） */
+button.tvrm-dot { all: unset; box-sizing: border-box; flex: 0 0 auto; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; margin: 0 1px; }
+button.tvrm-dot::before { content: ''; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--tvrm-dim, #999); }
+button.tvrm-dot.is-on::before { border-color: var(--tvrm-accent); background: var(--tvrm-accent); }
+/* 大标题之间别空太多 */
+details.tvrm-lv1 { margin-top: 4px; }
+details.tvrm-lv1 > summary { padding: 6px 0 5px; }
+.tvrm-panel .tvrm-tabs + details.tvrm-lv1, .tvrm-panel .tvrm-actions + details.tvrm-lv1 { margin-top: 2px; }
+/* 列表项写得更具体一点：别的插件给 button 写的样式（display、margin）盖不过它 */
+.tvrm-key-sheet button.tvrm-key-pick { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 6px 8px; border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 6px; }
+.tvrm-key-sheet button.tvrm-key-pick small { display: block; opacity: .75; overflow-wrap: anywhere; }
+.tvrm-key-sheet .tvrm-key-sheet-head button { margin: 0; display: inline-block; }
