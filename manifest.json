@@ -1,0 +1,12 @@
+{
+    "display_name": "酒馆你害我不浅",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "zhouyesyes",
+    "version": "0.1.0",
+    "homePage": "https://github.com/zhouyesyes/tavern-ruined-me",
+    "auto_update": true
+}
