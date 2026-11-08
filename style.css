@@ -292,3 +292,8 @@ details.tvrm-lv1 > summary { font-size: 1.02em; font-weight: 700; padding: 4px 0
 .tvrm-mini-switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--tvrm-dim, #999); transition: transform .15s, background .15s; }
 .tvrm-mini-switch input:checked + i { background: color-mix(in srgb, var(--tvrm-accent) 25%, transparent); border-color: var(--tvrm-accent); }
 .tvrm-mini-switch input:checked + i::after { transform: translateX(11px); background: var(--tvrm-accent); }
+.tvrm-ledger-lines li.tvrm-ro-entry { display: block; }
+.tvrm-ro-row { display: flex; align-items: center; gap: 5px; }
+.tvrm-ro-row .tvrm-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tvrm-ro-entry.is-off .tvrm-name { opacity: .55; }
+.tvrm-ro-entry .tvrm-detail { margin: 2px 0 4px 14px; }

@@ -528,9 +528,28 @@ export function createApp(host) {
             const list = h('ol', { class: 'tvrm-ledger-lines' });
             const draw = () => {
                 const cached = entryCache.get(name);
-                const names = new Map((cached || []).map(e => [String(e.uid), entryLabel(e)]));
-                list.replaceChildren(...Object.entries(entries).filter(([uid]) => !cached || names.has(uid)).map(([uid, v]) => h('li', { class: v ? '' : 'is-off' },
-                    h('span', { class: 'tvrm-state ' + (v ? 'is-on' : 'is-off'), title: v ? '开' : '关', 'aria-label': v ? '开' : '关' }), h('span', { class: 'tvrm-name' }, names.get(uid) || '条目 ' + uid))));
+                const byUid = new Map((cached || []).map(e => [String(e.uid), e]));
+                // 每一条后面一个 ▸，点开看关键词和正文（和当前聊天里的一样）
+                list.replaceChildren(...Object.entries(entries).filter(([uid]) => !cached || byUid.has(uid)).map(([uid, v]) => {
+                    const entry = byUid.get(uid); const ekey = 'ro|' + key + '|' + name + '|' + uid;
+                    const li = h('li', { class: 'tvrm-ro-entry' + (v ? '' : ' is-off') });
+                    const row = h('div', { class: 'tvrm-ro-row' },
+                        h('span', { class: 'tvrm-state ' + (v ? 'is-on' : 'is-off'), title: v ? '开' : '关', 'aria-label': v ? '开' : '关' }),
+                        h('span', { class: 'tvrm-name' }, entry ? entryLabel(entry) : '条目 ' + uid));
+                    li.append(row);
+                    if (entry) {
+                        const arrow = h('button', { type: 'button', class: 'tvrm-expand' + (openEntries.has(ekey) ? ' is-open' : ''), 'aria-label': entryLabel(entry) + '展开内容' }, '▸');
+                        let detail = openEntries.has(ekey) ? entryDetail(entry) : null;
+                        arrow.addEventListener('click', () => {
+                            if (detail) { detail.remove(); detail = null; openEntries.delete(ekey); }
+                            else { detail = entryDetail(entry); li.append(detail); openEntries.add(ekey); }
+                            arrow.classList.toggle('is-open', !!detail);
+                        });
+                        row.append(arrow);
+                        if (detail) li.append(detail);
+                    }
+                    return li;
+                }));
             };
             book.addEventListener('toggle', async () => {
                 if (!book.open) return;
