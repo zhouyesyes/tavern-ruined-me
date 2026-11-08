@@ -144,7 +144,7 @@ export function createPresetKeeper(host) {
 
     function orderList(order) {
         return h('ol', { class: 'tvrm-ledger-lines' }, order.map(o => h('li', { class: o.on ? '' : 'is-off' },
-            h('span', { class: 'tvrm-state ' + (o.on ? 'is-on' : 'is-off') }, o.on ? '开' : '关'), h('span', { class: 'tvrm-name' }, host.preset.entryName?.(o.id) || o.id))));
+            h('span', { class: 'tvrm-state ' + (o.on ? 'is-on' : 'is-off'), title: o.on ? '开' : '关', 'aria-label': o.on ? '开' : '关' }), h('span', { class: 'tvrm-name' }, host.preset.entryName?.(o.id) || o.id))));
     }
     function setCard(chat, label, item, isActive, key) {
         const k = key + '|' + (item.id || 'active');

@@ -406,3 +406,21 @@ test('所有聊天：同一个角色的两个聊天都列出来，各开各的�
     assert.ok(line.classList.contains('is-off'), '那个聊天里条目一是关的');
     assert.equal(first.tavern_ruined_me.slots.world.entries.A['1'], false);
 });
+
+test('原书里删掉的条目：别的聊天的小账里也去掉，不显示「条目 N」；开关是小圆圈没有字', async () => {
+    const x = setup(); await x.app.init();
+    await x.toggle('条目二', true); await x.app.whenIdle();
+    x.ctx.chatMetadata = {}; x.ctx.chatId = 'second'; await x.app.onChatChanged();
+    const idx = x.app.settings().world.index;
+    const firstKey = Object.keys(idx).find(k => k.endsWith('|same-id'));
+    assert.ok('2' in idx[firstKey].books.A);
+    delete x.books.A.entries[2]; // 她在原书里删了条目二，酒馆发「书改了」
+    x.app.onWorldChanged(); await x.run(); await x.app.whenIdle();
+    x.document.querySelector('.tvrm-popup')?.remove(); x.app.renderPanel();
+    const other = [...x.document.querySelectorAll('.tvrm-chat')].find(c => /same-id/.test(c.querySelector('summary').textContent));
+    const bookA = [...other.querySelectorAll('.tvrm-book-ro')].find(b => /^A/.test(b.querySelector('summary').textContent));
+    bookA.open = true; bookA.dispatchEvent(new x.document.defaultView.Event('toggle')); await x.tick(); await x.tick();
+    assert.equal('2' in idx[firstKey].books.A, false);
+    assert.doesNotMatch(bookA.textContent, /条目 2|条目二/);
+    const dot = bookA.querySelector('.tvrm-state'); assert.equal(dot.textContent, '');
+});

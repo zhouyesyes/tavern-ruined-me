@@ -186,8 +186,6 @@ export function createKeyKeeper(host) {
         closeSheet(); hidePill();
         toast('success', `填好了「${k.name}」` + (both ? '（地址和密钥都填了）' : ''));
     }
-    // 框在弹窗（<dialog>，浏览器的最上层）里：小钥匙和选单也放进那个弹窗，不然会被它盖住看不见；不在弹窗里就放在页面上
-    const layerOf = el => el?.closest?.('dialog[open]') || doc.body;
     let follow = null; // 正在贴着的框
     function hidePill() { pill?.remove(); pill = null; follow = null; }
     function closeSheet() { sheet?.remove(); sheet = null; }
@@ -204,19 +202,17 @@ export function createKeyKeeper(host) {
         hidePill();
         if (!store().keys.length) return;
         pill = h('button', { type: 'button', class: 'tvrm-key-pill', title: '从钥匙本里填', 'aria-label': '从钥匙本里填' }, h('i', { class: 'fa-solid fa-key' }));
-        // 按下去时不让输入框失焦；松手时打开列表（手机上 click 有时等不到）
-        let opened = false;
-        const openIt = e => { e.preventDefault(); if (opened) return; opened = true; setTimeout(() => { opened = false; }, 400); openSheet(kind); };
+        // 按下去时不让输入框失焦；只在 click 时打开列表。
+        // 不能在松手（pointerup）时就打开：手机松手后还会补发一次 click，正好落在刚弹出来的列表的「关」上，一出来就被关掉
         pill.addEventListener('pointerdown', e => e.preventDefault());
         pill.addEventListener('mousedown', e => e.preventDefault());
-        pill.addEventListener('pointerup', openIt);
-        pill.addEventListener('click', openIt);
+        pill.addEventListener('click', e => { e.preventDefault(); openSheet(kind); });
         el.after(pill);
         follow = el; place(el);
     }
     function openSheet(kind) {
         closeSheet();
-        target?.el?.blur?.(); // 先收起键盘，列表从下面出来才看得见
+        const el = target?.el; if (!el?.isConnected) return;
         let q = '';
         const list = h('div', { class: 'tvrm-key-sheet-list' });
         const draw = () => list.replaceChildren(...searchKeys(store().keys, q).map(k => {
@@ -226,11 +222,16 @@ export function createKeyKeeper(host) {
         }));
         const search = h('input', { class: 'text_pole', placeholder: '搜一下', 'data-tvrm-keyfield': 'own' });
         search.addEventListener('input', () => { q = search.value; draw(); });
-        sheet = h('div', { class: 'tvrm-key-sheet', role: 'dialog' },
+        // 列表挂在输入框正下方（像下拉菜单），和框待在同一个盒子里：不用收键盘，也不会被键盘挡住
+        sheet = h('div', { class: 'tvrm-key-sheet', role: 'listbox' },
             h('div', { class: 'tvrm-key-sheet-head' }, h('b', null, kind === 'url' ? '填地址（密钥一起）' : '填密钥（地址一起）'), btn('关', closeSheet, 'tvrm-btn-mini')),
             store().keys.length > 6 ? search : null, list);
         draw();
-        layerOf(target?.el).append(sheet);
+        sheet.style.top = el.offsetTop + el.offsetHeight + 4 + 'px';
+        sheet.style.left = el.offsetLeft + 'px';
+        sheet.style.width = Math.max(220, el.offsetWidth) + 'px';
+        (pill || el).after(sheet);
+        sheet.scrollIntoView?.({ block: 'nearest' });
     }
     function initFill() {
         doc.addEventListener('focusin', e => {

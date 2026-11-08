@@ -88,7 +88,8 @@ test('小钥匙插在框后面（跟着框走）；框在弹窗里时选单也�
     const pill = d.querySelector('.tvrm-key-pill'); assert.ok(pill, '有小钥匙');
     assert.equal(pill.previousElementSibling, hu, '钥匙就插在框后面'); assert.ok(pill.closest('#hub'));
     pill.click();
-    assert.equal(d.querySelector('.tvrm-key-sheet').parentElement.id, 'hub');
+    const sheet = d.querySelector('.tvrm-key-sheet'); assert.ok(sheet.closest('#hub')); assert.equal(sheet.previousElementSibling, d.querySelector('.tvrm-key-pill'), '列表挂在框下面（钥匙后面）');
+    assert.notEqual(d.activeElement, null);
     d.querySelector('.tvrm-key-pick').click();
     assert.equal(hu.value, 'https://a.com/v1'); assert.equal(d.getElementById('hk').value, 'sk-1');
     d.getElementById('u').focus();
