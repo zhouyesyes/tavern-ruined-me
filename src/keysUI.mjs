@@ -62,7 +62,8 @@ export function createKeyKeeper(host) {
         list.push(...scanSettings(ctx().extensionSettings, [KEYS, 'tavern_ruined_me', 'tavern_ruined_me_presets']));
         const mine = store().keys; const seen = new Set();
         found = list.filter(f => { const id = f.url + '|' + f.key; if (seen.has(id)) return false; seen.add(id); return true; })
-            .map(f => { const have = mine.some(k => sameKey(k, f)); return { ...f, have, pick: !have }; });
+            .map(f => { const have = mine.some(k => sameKey(k, f)); return { ...f, have, pick: !have && !!f.url }; })
+            .sort((a, b) => (!!b.url - !!a.url) || (a.have - b.have)); // 有地址的在前；没地址的默认不勾（多半不是拿来连 API 的）
         rerender?.();
         const fresh = found.filter(f => !f.have).length;
         toast(fresh ? 'success' : 'info', found.length ? `找到 ${found.length} 条，其中 ${fresh} 条钥匙本里还没有` : '没找到存着地址和密钥的地方');

@@ -95,7 +95,16 @@ const KEY_PROP = /api[_-]?key|apikey|secret|token|password|passwd|pwd|(^|[_-])ke
 const URL_PROP = /url|endpoint|base|host|server|proxy|api$/i;
 const NAME_PROP = /^(name|label|title|alias|nickname|备注|名称)$/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i; // 酒馆密钥的编号，不是密钥本身
-const looksKey = v => typeof v === 'string' && v.trim().length >= 8 && !/\s/.test(v.trim()) && !/^https?:\/\//i.test(v.trim()) && !UUID.test(v.trim());
+// 像密钥：够长、没有空格、不是网址、不是编号；还得带数字（事件名 secret_written、格子名 api_key_deepseek 这种纯字母下划线的不算），不是一段 JSON
+const looksKey = v => {
+    if (typeof v !== 'string') return false;
+    const t = v.trim();
+    return t.length >= 12 && !/\s/.test(t) && !/^https?:\/\//i.test(t) && !UUID.test(t) && /\d/.test(t) && !/^[[{"]/.test(t);
+};
+// 全大写带下划线的名字是常量（SECRET_WRITTEN、STREAM_TOKEN_RECEIVED），不是存密钥的地方
+const isConst = p => /_/.test(p) && p === p.toUpperCase();
+// 不往里钻的：网页元素、jQuery 的内部数据、浏览器存储的整份拷贝
+const SKIP_NODE = /^jQuery\d+$|^(document|window|localStorage|sessionStorage|uiSortable)$/;
 const looksUrl = v => typeof v === 'string' && /^https?:\/\/\S+$/i.test(v.trim());
 
 // settings：extensionSettings；skip：不扫的插件（比如我们自己）。返回 [{ source, path, name, url, key }]
@@ -107,13 +116,14 @@ export function scanSettings(settings, skip = []) {
         if (!Array.isArray(obj)) {
             const props = Object.keys(obj);
             for (const kp of props) {
-                if (!KEY_PROP.test(kp) || NOT_KEY.test(kp) || !looksKey(obj[kp])) continue;
+                if (!KEY_PROP.test(kp) || NOT_KEY.test(kp) || isConst(kp) || !looksKey(obj[kp])) continue;
                 const up = props.find(p => p !== kp && URL_PROP.test(p) && looksUrl(obj[p]));
                 const np = props.find(p => NAME_PROP.test(p) && typeof obj[p] === 'string' && obj[p].trim());
                 out.push({ source: path[0], path: [...path, kp].join(' › '), name: np ? obj[np].trim() : '', url: up ? obj[up].trim() : '', key: obj[kp].trim() });
             }
         }
-        for (const [k, v] of Object.entries(obj)) if (v && typeof v === 'object') walk(v, [...path, Array.isArray(obj) ? `#${Number(k) + 1}` : k], depth + 1);
+        if (obj.nodeType || obj.jquery) return;
+        for (const [k, v] of Object.entries(obj)) if (v && typeof v === 'object' && !SKIP_NODE.test(k)) walk(v, [...path, Array.isArray(obj) ? `#${Number(k) + 1}` : k], depth + 1);
     };
     for (const [name, value] of Object.entries(settings || {})) if (!skip.includes(name)) walk(value, [name], 0);
     // 同一个地址同一把密钥只留一条
