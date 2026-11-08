@@ -68,25 +68,34 @@ export function createPresetKeeper(host) {
     }
     async function write(fn) { own++; try { await fn(); } finally { own--; } } // 插件自己写的，不算手动修改
 
+    // 换预设 → 等酒馆加载完 → 写回开关和顺序 → 刷新预设页。任何一步失败都抛出，由调用方告诉她。
     async function apply(rec) {
-        if (rec.preset && rec.preset !== host.preset.name()) await write(() => host.preset.select(rec.preset));
-        const merged = applyOrder(host.preset.order(), rec.active.order);
-        await write(() => host.preset.setOrder(merged));
+        await write(async () => {
+            if (rec.preset && rec.preset !== host.preset.name()) {
+                await host.preset.select(rec.preset);
+                if (host.preset.name() !== rec.preset) throw new Error('预设没有切过去：' + rec.preset);
+            }
+            await host.preset.setOrder(applyOrder(host.preset.order(), rec.active.order));
+        });
     }
-    async function enter(my) {
-        const info = cur(); if (!info) return;
-        const chats = store().chats; let rec = chats[info.key];
+    async function enter(my, info) {
+        const chats = store().chats; const rec = chats[info.key];
         if (!rec) { // 新聊天第一次进来：沿用现在的预设，不改任何东西
             chats[info.key] = newRecord(host.preset.name(), snapshotOrder(host.preset.order()));
-        } else await apply(rec);
+        } else {
+            try { await apply(rec); }
+            catch (e) { console.warn('[酒馆你害我不浅] 预设切换失败', e); toast('warning', '这个聊天的预设没能切回来：' + (e.message || e)); }
+        }
         chats[info.key].label = info.label;
         if (my === revision) save();
     }
-    // 切聊天：先上锁，写回完成才解锁
+    // 切聊天：先上锁，写回完成才解锁；排队执行，连切几次只做最后一个
     function onChatChanged() {
         const my = ++revision; lock = my;
+        const info = cur();
         queue = queue.then(async () => {
-            try { await enter(my); } catch (e) { console.warn('[酒馆你害我不浅] 预设切换失败', e); }
+            try { if (info && my === revision) await enter(my, info); }
+            catch (e) { console.warn('[酒馆你害我不浅] 预设切换失败', e); }
             finally { if (lock === my) lock = null; }
             rerender?.();
         });
@@ -96,17 +105,36 @@ export function createPresetKeeper(host) {
     function onPresetEvent() {
         if (locked() || own > 0) return;
         const rec = record(); if (!rec) return;
-        rec.preset = host.preset.name(); rec.active = { order: snapshotOrder(host.preset.order()) };
+        const order = snapshotOrder(host.preset.order());
+        if (rec.preset === host.preset.name() && sameOrder(rec.active.order, order)) return;
+        rec.preset = host.preset.name(); rec.active = { order };
         save(); rerender?.();
     }
-    async function doSwitch(id) {
-        const rec = record(); if (!rec) return;
+    // 切到某个存档：同样排队、上锁；先真的切成功，才改记录（切不过去就什么都不动）
+    function doSwitch(id) {
+        const info = cur(); if (!info) return queue;
         const my = ++revision; lock = my;
-        try {
-            if (!switchTo(rec, id)) return;
-            await apply(rec); save();
-        } finally { if (lock === my) lock = null; }
-        rerender?.(); toast('success', '已切换；原来那套存成了「上一套」');
+        queue = queue.then(async () => {
+            try {
+                const rec = store().chats[info.key]; if (!rec || my !== revision) return;
+                const draft = clone(rec);
+                if (!switchTo(draft, id)) return;
+                await apply(draft);
+                rec.saves = draft.saves; rec.preset = draft.preset; rec.active = draft.active; save();
+                toast('success', '已切换；原来那套存成了「上一套」');
+            } catch (e) { console.warn('[酒馆你害我不浅] 存档切换失败', e); toast('error', '没切过去：' + (e.message || e)); }
+            finally { if (lock === my) lock = null; }
+            rerender?.();
+        });
+        return queue;
+    }
+    function rename(chat, item, nameEl) { // 点名字改名：出现输入框和「保存」，点了保存才存
+        const input = h('input', { class: 'text_pole', value: item.name, 'aria-label': '存档名称' });
+        input.value = item.name;
+        const editor = h('div', { class: 'tvrm-group-edit' }, input,
+            h('button', { type: 'button', class: 'menu_button', onclick: () => { if (renameSave(chat, item.id, input.value)) { save(); rerender?.(); } } }, '保存'),
+            h('button', { type: 'button', class: 'menu_button', onclick: () => editor.replaceWith(nameEl) }, '取消'));
+        nameEl.replaceWith(editor); input.focus?.();
     }
 
     function orderList(order) {
@@ -118,29 +146,33 @@ export function createPresetKeeper(host) {
         const d = h('details', { class: 'tvrm-set' + (isActive ? ' is-active' : ''), open: openSaves.has(k) }, h('summary', null, h('span', { class: 'tvrm-name' }, label),
             h('small', { class: 'tvrm-count' }, `${item.preset || chat.preset} · ${item.order.length} 条`)));
         d.addEventListener('toggle', () => { if (d.open) openSaves.add(k); else openSaves.delete(k); });
+        if (!isActive) {
+            const nameEl = h('button', { type: 'button', class: 'tvrm-rename', title: '点一下改名' }, item.name, h('small', null, '　点名字改名'));
+            nameEl.addEventListener('click', () => rename(chat, item, nameEl));
+            d.append(h('div', { class: 'tvrm-rename-row' }, nameEl));
+        }
         d.append(orderList(item.order));
         if (isActive) d.append(h('div', { class: 'tvrm-set-actions' }, h('button', { type: 'button', class: 'menu_button', onclick: () => { saveAs(chat, ''); save(); rerender?.(); } }, '另存一套')));
         else d.append(h('div', { class: 'tvrm-set-actions' },
             h('button', { type: 'button', class: 'menu_button', onclick: () => doSwitch(item.id) }, '切换到这套'),
-            h('button', { type: 'button', class: 'menu_button', onclick: async () => { const v = await host.prompt?.('改名', item.name); if (v && renameSave(chat, item.id, v)) { save(); rerender?.(); } } }, '改名'),
             h('button', { type: 'button', class: 'menu_button tvrm-delete', onclick: async () => { if (await host.confirm?.(`删除「${item.name}」？`)) { deleteSave(chat, item.id); save(); rerender?.(); } } }, '删除')));
         return d;
     }
     function render(container) {
         rerender = () => render(container);
         const chats = store().chats; const keys = Object.keys(chats); const here = cur()?.key;
-        container.replaceChildren(h('h4', { class: 'tvrm-heading' }, `预设格（${keys.length} 个聊天）`));
-        if (!keys.length) container.append(h('p', { class: 'tvrm-empty' }, '还没有存过的聊天。进入聊天后会自动开始记。'));
+        container.replaceChildren();
+        if (!keys.length) return; // 没有内容就什么都不放
+        container.append(h('h4', { class: 'tvrm-heading' }, `预设格（${keys.length} 个聊天）`));
         for (const key of keys) {
             const chat = chats[key];
+            // 聊天名一行，预设名一行，不挤在一起
             const d = h('details', { class: 'tvrm-card tvrm-page', open: open.has(key) }, h('summary', null,
                 h('span', { class: 'tvrm-name' }, (chat.label || key) + (key === here ? '（当前）' : '')),
                 h('small', { class: 'tvrm-count' }, `${chat.preset || '未知预设'} · 存档${chat.saves.length}套`)));
             d.addEventListener('toggle', () => { if (d.open) open.add(key); else open.delete(key); });
             const body = h('div', { class: 'tvrm-card-body' });
             body.append(setCard(chat, '在用', chat.active, true, key));
-            // 在用的预设名也显示出来
-            body.querySelector('.tvrm-count').textContent = `${chat.preset} · ${chat.active.order.length} 条`;
             for (const s of chat.saves) body.append(setCard(chat, s.name, s, false, key));
             d.append(body); container.append(d);
         }

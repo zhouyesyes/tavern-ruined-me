@@ -5,14 +5,20 @@ import { world_names, selected_world_info, world_info, loadWorldInfo, saveWorldI
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { createApp } from './src/ui.mjs';
 import { createPresetKeeper } from './src/preset.mjs';
-import { oai_settings, promptManager } from '../../../openai.js';
+import { oai_settings, openai_setting_names, promptManager, getPresetApplicationPromise } from '../../../openai.js';
 
-// 预设格接到酒馆（聊天补全预设）：开关和顺序在 oai_settings.prompt_order 里
-const orderList = () => {
-    const list = oai_settings.prompt_order || [];
-    const mine = list.find(x => String(x.character_id) === '100001') || list[0];
-    return mine?.order || [];
+// 预设格接到酒馆（聊天补全预设）。照酒馆自己 openai.js / PromptManager.js 的做法：
+// - 当前预设名：oai_settings.preset_settings_openai；预设名 → 下拉选项值：openai_setting_names[name]
+// - 换预设：把 #settings_preset_openai 设成那个值并触发 change（和手点下拉一样），
+//   酒馆的 onSettingsPresetChange 会把预设内容（含 prompt_order）载进 oai_settings；
+//   它的完成信号是 getPresetApplicationPromise()，要等它，不能靠定时器
+// - 开关和顺序：promptManager.getPromptOrderForCharacter(promptManager.activeCharacter)，
+//   原地改这个数组，再 promptManager.render(false) 刷新预设页，promptManager.saveServiceSettings() 存下来
+const orderEntry = () => {
+    const pm = promptManager; if (!pm?.serviceSettings) return null;
+    return pm.getPromptOrderForCharacter(pm.activeCharacter);
 };
+const wait = ms => new Promise(r => setTimeout(r, ms));
 const presetKeeper = createPresetKeeper({
     document,
     getContext,
@@ -27,14 +33,25 @@ const presetKeeper = createPresetKeeper({
     prompt: async (title, value) => await callGenericPopup(title, POPUP_TYPE.INPUT, value),
     preset: {
         name: () => oai_settings.preset_settings_openai,
-        order: () => orderList().map(x => ({ ...x })),
-        setOrder: async order => { const cur = orderList(); cur.splice(0, cur.length, ...order); promptManager?.render?.(false); getContext().saveSettingsDebounced?.(); },
+        order: () => (orderEntry() || []).map(x => ({ ...x })),
+        setOrder: async order => {
+            const pm = promptManager; if (!pm?.serviceSettings) throw new Error('预设页还没准备好');
+            let list = orderEntry();
+            if (!list?.length && pm.activeCharacter) { // 这套预设里还没有这个位置的顺序：照酒馆的格式补一条
+                oai_settings.prompt_order = (oai_settings.prompt_order || []).filter(x => String(x.character_id) !== String(pm.activeCharacter.id));
+                oai_settings.prompt_order.push({ character_id: pm.activeCharacter.id, order: [] });
+                list = orderEntry();
+            }
+            list.splice(0, list.length, ...order);
+            pm.render(false);
+            await Promise.race([pm.saveServiceSettings(), wait(3000)]); // 等酒馆存完（SETTINGS_UPDATED），最多等 3 秒
+        },
         select: async name => {
+            const value = openai_setting_names?.[name];
             const sel = document.getElementById('settings_preset_openai');
-            const opt = [...(sel?.options || [])].find(o => o.textContent === name);
-            if (!opt) return;
-            sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 800)); // 等酒馆把预设载完
+            if (value === undefined || !sel) throw new Error('酒馆里找不到预设「' + name + '」（可能被删了或改了名）');
+            jQuery(sel).val(String(value)).trigger('change');
+            await getPresetApplicationPromise();
         },
         entryName: id => promptManager?.getPromptById?.(id)?.name || id,
     },

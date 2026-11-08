@@ -165,22 +165,11 @@ test('弹窗只有分了类和没分类的条目，没有分组设置和整本�
     assert.equal(x.books.A.entries[1].disable, true);
 });
 
-test('恢复原书在卡片最底下一行小字，需确认且不会被切聊天覆盖', async () => {
-    const x = setup(); await x.app.init();
-    await x.toggle('条目一', false); await x.app.whenIdle();
-    assert.equal(x.document.querySelector('.tvrm-card .tvrm-foot .tvrm-restore').textContent, '恢复原书');
-    x.document.querySelector('.tvrm-restore:not(.tvrm-delete)').click(); await x.tick();
-    assert.equal(x.books.A.entries[1].disable, false);
-    await x.app.onChatChanged(); assert.equal(x.books.A.entries[1].disable, false);
-    assert.equal(x.app.settings().world.books.A.restored, true);
-});
-
-test('条目右边只有归类下拉和展开箭头；展开只读显示关键词和正文，不能改；状态一眼可见', async () => {
+test('条目右边只有归类下拉和展开箭头；展开只读显示关键词和正文，不能改', async () => {
     const x = setup(); await x.app.init();
     assert.equal(x.document.querySelector('.tvrm-edit'), null);
     assert.ok(![...x.document.querySelectorAll('button')].some(b => b.textContent === '编辑'));
-    const states = [...x.document.querySelectorAll('.tvrm-card')[0].querySelectorAll('.tvrm-state')].map(e => e.textContent);
-    assert.deepEqual(states, ['开', '关']);
+    assert.equal(x.document.querySelector('.tvrm-card .tvrm-state'), null);
     assert.equal(x.document.querySelector('.tvrm-detail'), null);
     x.document.querySelector('[aria-label="条目一展开内容"]').click();
     const d = x.document.querySelector('.tvrm-detail');
@@ -191,13 +180,33 @@ test('条目右边只有归类下拉和展开箭头；展开只读显示关键�
     assert.equal(x.document.querySelector('.tvrm-detail'), null);
 });
 
-test('从面板移除需确认，保留备份并可重新显示', async () => {
+test('没有「从面板移除」和「恢复原书」，面板里没有开关也没有开/关小标', async () => {
     const x = setup(); await x.app.init(); await x.toggle('条目一', false); await x.app.whenIdle();
-    x.document.querySelector('.tvrm-foot .tvrm-delete').click(); await x.tick();
-    assert.equal(x.document.querySelectorAll('.tvrm-card[data-zone="bound"]').length, 1);
-    assert.ok(x.app.settings().world.books.A.backup);
-    const select = x.document.querySelector('[aria-label="重新显示世界书"]'); select.value = 'A'; select.dispatchEvent(new x.document.defaultView.Event('change')); await x.tick();
-    assert.equal(x.document.querySelectorAll('.tvrm-card[data-zone="bound"]').length, 2);
+    const text = x.document.querySelector('.tvrm-panel').textContent;
+    assert.doesNotMatch(text, /从面板移除|恢复原书|重新显示/);
+    assert.equal(x.document.querySelector('.tvrm-foot, .tvrm-restore, .tvrm-state, .tvrm-panel input[type=checkbox]'), null);
+    assert.ok(x.app.settings().world.books.A.backup); // 首次改书前的备份仍照常留着
+});
+
+test('「所有世界书」整块默认折叠，里面每本书也默认折叠；点开后才展开', async () => {
+    const x = setup(); await x.app.init();
+    const all = x.document.querySelector('details.tvrm-all'); assert.ok(all && !all.open);
+    assert.equal(all.querySelectorAll(':scope > .tvrm-card').length, 3);
+    assert.ok([...all.querySelectorAll('.tvrm-card')].every(c => !c.open));
+    all.open = true; all.dispatchEvent(new x.document.defaultView.Event('toggle'));
+    x.app.renderPanel(); assert.ok(x.document.querySelector('details.tvrm-all').open); // 重画后保持
+});
+
+test('某一段是空的就整段连小标题不显示，不放「暂无」「没有」占位字', async () => {
+    const x = setup(); // 默认：角色书 A、全局书 G，没有聊天世界书
+    await x.app.init();
+    let text = x.document.querySelector('.tvrm-panel').textContent;
+    assert.match(text, /角色世界书（1）/); assert.match(text, /全局世界书（1）/);
+    assert.doesNotMatch(text, /聊天世界书/); assert.doesNotMatch(text, /暂无|没有/);
+    const bare = setup(); bare.ctx.characters[0].data.extensions.world = ''; bare.ctx.characters[1].data.extensions.world = '';
+    bare.ctx.chatMetadata = {}; await bare.app.init(); // 还有全局 G
+    text = bare.document.querySelector('.tvrm-panel').textContent;
+    assert.doesNotMatch(text, /角色世界书|聊天世界书/); assert.match(text, /全局世界书（1）/);
 });
 
 test('保存请求中快速连续拨动和换窗，队列最终恢复目标聊天，不串写元数据', async () => {

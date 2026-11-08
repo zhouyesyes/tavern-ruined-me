@@ -16,13 +16,14 @@ export function createApp(host) {
     let ready = null;
     let chatPopup = null;
     const openBooks = new Set(); // 面板里展开的书，默认都折叠
+    let allOpen = false; // 「所有世界书」大折叠，默认收起
     const filters = new Map(); // 每本书当前点中、正在改名的分组
     const closedSections = new Set(); // 点收起的分组（书名|组id），默认全展开
     const openEntries = new Set(); // 点开看内容的条目（书名|uid）
     const managementChats = new Map();
     const displayChat = name => bookNames().includes(name) ? chatWorld() : managementChats.get(name);
     // 面板里列出的书：当前聊天绑定的，加上她分过类但没绑到当前聊天的（排在后面）
-    const extraNames = () => allNames().filter(n => !bookNames().includes(n) && !settings().world.hidden?.includes(n) && isClassified(settings(), n));
+    const extraNames = () => allNames().filter(n => !bookNames().includes(n) && isClassified(settings(), n));
     const listedNames = () => [...bookNames(), ...extraNames()];
     let queue = Promise.resolve();
     let revision = 0;
@@ -61,7 +62,7 @@ export function createApp(host) {
     const chatWorld = () => getChatSlot(ctx().chatMetadata, 'world');
     const allNames = () => Array.from(host.worldNames() || []);
     const visibleNames = () => boundBookNames(ctx(), host.bindings?.(), allNames());
-    const bookNames = () => visibleNames().filter(n => !settings().world.hidden?.includes(n));
+    const bookNames = () => visibleNames();
     const signature = () => JSON.stringify([visibleNames().slice().sort(), ctx().chatMetadata?.world_info ?? null]);
     function token() {
         const c = ctx();
@@ -158,7 +159,6 @@ export function createApp(host) {
         if (!current(t) || (!manual && !bookNames().includes(name))) return;
         const s = settings();
         const meta = bookMeta(s, name, true);
-        if (meta?.restored) return;
         const plan = planWriteBack(s, chat, name, data);
         if (!plan.length) return;
         if (!meta.backup) { meta.backup = snapshotBook(data); saveSettings(); }
@@ -219,7 +219,7 @@ export function createApp(host) {
         // 只把本聊天的选择套到这次要用的条目副本上；副本里别的插件临时改的开关不记进聊天，
         // 真正写进原书的修改（手拨开关、开场白/脚本存书）走 WORLDINFO_UPDATED 记录。
         for (const entry of all) {
-            if (!names.has(entry.world) || bookMeta(s, entry.world)?.restored) continue;
+            if (!names.has(entry.world)) continue;
             const want = resolveEntry(s, chat, entry.world, entry.uid, entry.disable === true);
             if (want !== null) entry.disable = !want;
         }
@@ -237,7 +237,7 @@ export function createApp(host) {
             if (before.entries[name][uid] !== on) changes.entries[uid] = on;
         }
         pending.set(name, changes);
-        bookMeta(settings(), name, true).restored = false;
+        bookMeta(settings(), name, true);
         persistChat(t); saveSettings();
         enqueue(async () => {
             if (!current(t)) return;
@@ -262,21 +262,6 @@ export function createApp(host) {
     }
 
     async function confirm(text) { return host.popup(h('div', { class: 'tvrm-popup' }, text), '确认'); }
-    async function restoreBook(name, t) {
-        const meta = bookMeta(settings(), name);
-        if (!meta?.backup || !await confirm(`恢复「${name}」的首次修改备份？这会替换当前原书内容。`)) return;
-        return enqueue(async () => {
-            if (!current(t)) return;
-            ownSave = true;
-            try { await host.saveWorldInfo(name, clone(meta.backup.data), true); }
-            finally { ownSave = false; }
-            meta.restored = true;
-            settings().world.physical[name] = Object.fromEntries(Object.values(meta.backup.data.entries).map(e => [String(e.uid), !e.disable]));
-            entryCache.delete(name); saveSettings();
-            if (current(t)) { renderPanel(); syncNative(); }
-            toast('success', '已恢复原书；再次手动修改开关后才重新接管');
-        });
-    }
     function switchRow({ name, checked, onToggle, cls = '' }) {
         const input = h('input', { type: 'checkbox', checked, 'aria-label': name });
         input.addEventListener('change', () => onToggle(input.checked));
@@ -386,23 +371,14 @@ export function createApp(host) {
                     arrow.classList.toggle('is-open', openEntries.has(ekey)); arrow.setAttribute('aria-expanded', openEntries.has(ekey) ? 'true' : 'false');
                 });
                 wrap.append(h('div', { class: 'tvrm-entry' + (isOn ? '' : ' is-off') },
-                    h('span', { class: 'tvrm-state ' + (isOn ? 'is-on' : 'is-off'), 'aria-label': isOn ? '开着' : '关着' }, isOn ? '开' : '关'),
                     h('span', { class: 'tvrm-name', title: entrySub(entry) }, entryLabel(entry)), sel, arrow));
                 if (openEntries.has(ekey)) showDetail();
                 section.append(wrap);
             }
-            if (!g.members.length) section.append(h('p', { class: 'tvrm-empty' }, '这一组还没有条目；在条目右边的下拉里选这个组。'));
             area.append(section);
         }
-        if (!entries.length) area.append(h('p', { class: 'tvrm-empty' }, loaded ? '这本书里还没有条目。' : '正在读取…'));
+        if (!loaded) area.append(h('p', { class: 'tvrm-empty' }, '正在读取…'));
         body.append(area);
-        const hasBackup = !!bookMeta(settings(), name)?.backup;
-        body.append(h('div', { class: 'tvrm-foot' },
-            h('button', { type: 'button', class: 'tvrm-restore', disabled: !hasBackup, onclick: () => restoreBook(name, t) }, '恢复原书'),
-            h('button', { type: 'button', class: 'tvrm-restore tvrm-delete', onclick: async () => {
-                if (!await confirm('从本面板移除「' + name + '」？原书和备份都会保留，可重新显示。') || !current(t)) return;
-                (settings().world.hidden ??= []).push(name); saveSettings(); renderPanel();
-            } }, '从面板移除')));
         card.append(body);
         return card;
     }
@@ -471,31 +447,25 @@ export function createApp(host) {
         if (mode === 'preset' && keeper) { const box = h('div', { class: 'tvrm-presets' }); panelRoot.append(box); keeper.render(box); return; }
         const chatOn = hasChat();
         if (chatOn) panelRoot.append(h('div', { class: 'tvrm-actions' }, button('这个聊天开哪些', () => showChat())));
-        // 第一块：这个聊天绑定的（没开聊天就不显示）
+        // 第一块：这个聊天绑定的（没开聊天就不显示；哪一段是空的，整段连小标题一起不显示）
         if (chatOn) {
             const kinds = bindingKinds(ctx(), host.bindings?.(), allNames());
-            const shown = n => !settings().world.hidden?.includes(n);
-            panelRoot.append(h('h4', { class: 'tvrm-heading' }, '这个聊天绑定的'));
-            for (const [label, list] of [['角色世界书', kinds.character], ['聊天世界书', kinds.chat], ['全局世界书', kinds.global]]) {
-                const names = list.filter(shown);
-                panelRoot.append(h('h5', { class: 'tvrm-sub' }, `${label}（${names.length}）`));
-                if (!names.length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '没有'));
-                for (const name of names) panelRoot.append(bookCard(name, t, 'bound'));
+            const groups = [['角色世界书', kinds.character], ['聊天世界书', kinds.chat], ['全局世界书', kinds.global]].filter(([, list]) => list.length);
+            if (groups.length) {
+                panelRoot.append(h('h4', { class: 'tvrm-heading' }, '这个聊天绑定的'));
+                for (const [label, names] of groups) {
+                    panelRoot.append(h('h5', { class: 'tvrm-sub' }, `${label}（${names.length}）`));
+                    for (const name of names) panelRoot.append(bookCard(name, t, 'bound'));
+                }
             }
         }
-        // 第二块：酒馆里所有世界书（分没分类的都列）
-        const everything = allNames().filter(n => !settings().world.hidden?.includes(n));
-        panelRoot.append(h('h4', { class: 'tvrm-heading tvrm-heading-all' }, `所有世界书（${everything.length}）`));
-        if (!everything.length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '酒馆里还没有世界书。'));
-        for (const name of everything) panelRoot.append(bookCard(name, t, 'all'));
-        const hidden = allNames().filter(n => settings().world.hidden?.includes(n));
-        if (hidden.length) {
-            const select = h('select', { class: 'text_pole', 'aria-label': '重新显示世界书' }, h('option', { value: '' }, '重新显示世界书…'), hidden.map(n => h('option', { value: n }, n)));
-            select.addEventListener('change', () => {
-                if (!select.value || !current(t)) return;
-                settings().world.hidden = settings().world.hidden.filter(n => n !== select.value); saveSettings(); onChatChanged();
-            });
-            panelRoot.append(select);
+        // 第二块：酒馆里所有世界书，外面一个大折叠（默认收起），里面一本一本也默认收起
+        const everything = allNames();
+        if (everything.length) {
+            const all = h('details', { class: 'tvrm-all', open: allOpen }, h('summary', { class: 'tvrm-heading tvrm-heading-all' }, `所有世界书（${everything.length}）`));
+            all.addEventListener('toggle', () => { allOpen = all.open; });
+            for (const name of everything) all.append(bookCard(name, t, 'all'));
+            panelRoot.append(all);
         }
     }
     function mountPanel() {

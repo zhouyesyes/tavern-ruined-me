@@ -34,7 +34,7 @@ export function normalizeSettings(raw) {
             ...b,
             groups: Array.isArray(b.groups) ? b.groups : [],
             assign: b.assign && typeof b.assign === 'object' ? b.assign : {},
-            restored: b.restored === true,
+            restored: false,
             backup: b.backup ?? null,
         };
     }
