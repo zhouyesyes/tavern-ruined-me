@@ -50,6 +50,9 @@ export function createPresetKeeper(host) {
     const ctx = () => host.getContext();
     const toast = (k, m) => host.toast?.(k, m);
     let lock = null; let own = 0; let queue = Promise.resolve(); let revision = 0; let rerender = null;
+    // 已经进好的那个聊天：手动改动只记进它。酒馆切聊天时先换「当前聊天」、过一会儿才发 CHAT_CHANGED，
+    // 中间常有一次 SETTINGS_UPDATED；那时预设还是旧聊天的，不能记到新聊天名下（不然新聊天记成旧预设，切过去就不换了）
+    let here = null;
     const open = new Set(); const openSaves = new Set();
     const store = () => { const c = ctx(); c.extensionSettings[KEY] ??= { chats: {} }; return c.extensionSettings[KEY]; };
     const save = () => ctx().saveSettingsDebounced?.();
@@ -87,11 +90,11 @@ export function createPresetKeeper(host) {
             catch (e) { console.warn('[酒馆你害我不浅] 预设切换失败', e); toast('warning', '这个聊天的预设没能切回来：' + (e.message || e)); }
         }
         chats[info.key].label = info.label;
-        if (my === revision) save();
+        if (my === revision) { here = info.key; save(); }
     }
     // 切聊天：先上锁，写回完成才解锁；排队执行，连切几次只做最后一个
     function onChatChanged() {
-        const my = ++revision; lock = my;
+        const my = ++revision; lock = my; here = null;
         const info = cur();
         queue = queue.then(async () => {
             try { if (info && my === revision) await enter(my, info); }
@@ -104,7 +107,8 @@ export function createPresetKeeper(host) {
     // 预设页里手动开关/拖动/换预设：解锁后才记，只记进当前聊天
     function onPresetEvent() {
         if (locked() || own > 0) return;
-        const rec = record(); if (!rec) return;
+        if (!here || cur()?.key !== here) return; // 聊天刚换、还没进好：先不记
+        const rec = store().chats[here]; if (!rec) return;
         const order = snapshotOrder(host.preset.order());
         if (rec.preset === host.preset.name() && sameOrder(rec.active.order, order)) return;
         rec.preset = host.preset.name(); rec.active = { order };
