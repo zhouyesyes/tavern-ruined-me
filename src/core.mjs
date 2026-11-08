@@ -212,21 +212,32 @@ export function entrySub(entry, max = 40) {
     return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
+// 当前聊天实际用到的书，分三类：角色世界书（主书 + 额外绑定）、聊天世界书、全局世界书。
 // 与酒馆 getCharacterLore 一样按角色文件名找额外绑定，不猜显示名。
-export function boundBookNames(context, binding, available) {
-    const names = new Set(binding?.global || []);
+export function bindingKinds(context, binding, available) {
+    const has = n => available.includes(n);
+    const character = new Set();
     const ids = context.groupId
         ? (context.groups?.find(g => String(g.id) === String(context.groupId))?.members || [])
             .map(avatar => context.characters?.findIndex(c => c.avatar === avatar)).filter(i => i >= 0)
         : [context.characterId];
     for (const id of ids) {
-        const character = context.characters?.[id];
-        if (!character) continue;
-        const primary = character.data?.extensions?.world;
-        if (primary) names.add(primary);
-        const file = character.avatar?.replace(/\.[^/.]+$/, '');
-        for (const n of binding?.charLore?.find(c => c.name === file)?.extraBooks || []) names.add(n);
+        const c = context.characters?.[id];
+        if (!c) continue;
+        const primary = c.data?.extensions?.world;
+        if (primary) character.add(primary);
+        const file = c.avatar?.replace(/\.[^/.]+$/, '');
+        for (const n of binding?.charLore?.find(x => x.name === file)?.extraBooks || []) character.add(n);
     }
+    const chatBook = context.chatMetadata?.world_info;
+    const chat = chatBook ? [chatBook] : [];
+    const global = binding?.global || [];
+    return { character: [...character].filter(has), chat: chat.filter(has), global: [...new Set(global)].filter(has) };
+}
+
+export function boundBookNames(context, binding, available) {
+    const k = bindingKinds(context, binding, available);
+    const names = new Set([...k.character, ...k.chat, ...k.global]);
     return available.filter(n => names.has(n));
 }
 

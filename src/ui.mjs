@@ -3,7 +3,7 @@ import {
     NS, BUCKET, normalizeSettings, newBookCfg, newGroupId, bucketOf,
     removeGroup, setBucket, getChatSlot, setChatSlot, emptyWorldChat,
     resolveEntry, snapshotBook, bookMeta, planWriteBack, createDebouncer,
-    entryLabel, entrySub, boundBookNames, reconcileBook, isClassified,
+    entryLabel, entrySub, boundBookNames, bindingKinds, reconcileBook, isClassified,
 } from './core.mjs';
 
 export function createApp(host) {
@@ -27,6 +27,7 @@ export function createApp(host) {
     let revision = 0;
     let ownSave = false;
     let lockToken = null; // 切聊天时上锁：读出新聊天自己的配置、写回原书完成前，任何开关变化都不记
+    const hasChat = () => ctx().chatId != null;
     const locked = () => lockToken !== null && current(lockToken);
     let missedWhileLocked = false; // 上锁期间收到过原书更新：解锁后再按聊天自己的配置还原一次
     const entryCache = new Map();
@@ -67,7 +68,7 @@ export function createApp(host) {
     }
     function current(t) {
         const c = ctx();
-        return t && c.chatId != null && t.id === c.chatId && t.character === c.characterId && t.group === c.groupId && t.meta === c.chatMetadata && t.rev === revision && t.binding === signature();
+        return t && t.id === c.chatId && t.character === c.characterId && t.group === c.groupId && t.meta === c.chatMetadata && t.rev === revision && t.binding === signature();
     }
     function enqueue(fn) {
         const task = queue.then(fn);
@@ -96,6 +97,7 @@ export function createApp(host) {
     async function synchronize(t, restore = false) {
         if (!current(t)) return;
         const s = settings();
+        if (!hasChat()) return syncNoChat(t); // 没开聊天：只读所有世界书给面板看，不碰任何开关
         // 新聊天第一次进来没有自己的配置：沿用原书现状（等同切进聊天，不当成手动修改）
         if (!chatWorld()) restore = true;
         if (restore) lockToken = t;
@@ -106,6 +108,15 @@ export function createApp(host) {
             const again = token();
             enqueue(() => synchronize(again, true)); // 别的插件在上锁期间动过书：以聊天自己的配置再还原一遍，不记录
         }
+    }
+    async function syncNoChat(t) {
+        ready = t;
+        managementChats.clear();
+        for (const name of extraNames()) {
+            try { await loadManagement(name, t); } catch (e) { console.warn('[酒馆你害我不浅] 读不到世界书', name, e); }
+            if (!current(t)) return;
+        }
+        renderPanel();
     }
     async function synchronizeInner(t, restore, s) {
         const chat = clone(chatWorld() || emptyWorldChat());
@@ -172,7 +183,7 @@ export function createApp(host) {
         if (chatPopup) chatPopup.content.replaceChildren(h('p', null, '聊天已变化，请关闭后重新打开'));
         chatPopup = null;
         managementChats.clear();
-        if (panelRoot) panelRoot.replaceChildren(h('p', { class: 'tvrm-empty' }, '正在读取当前聊天…'));
+        if (panelRoot && hasChat()) panelRoot.replaceChildren(h('p', { class: 'tvrm-empty' }, '正在读取当前聊天…'));
         const t = token();
         // 切进聊天：以这个聊天自己存的选择为准写回原书（restore）
         return enqueue(() => synchronize(t, true));
@@ -196,6 +207,7 @@ export function createApp(host) {
         const id = source.chatId;
         const character = source.characterId;
         const group = source.groupId;
+        if (!hasChat()) return;
         if (locked()) await queue;
         else if (!current(ready)) await onChatChanged();
         if (!current(ready) || metadata !== ctx().chatMetadata || id !== ctx().chatId || character !== ctx().characterId || group !== ctx().groupId) return;
@@ -212,6 +224,7 @@ export function createApp(host) {
         }
     }
     function changeChat(t, name, fn) {
+        if (!hasChat()) return;
         if (!current(t) || !current(ready)) { toast('info', '聊天已变化，请等面板重新载入'); return; }
         const chat = displayChat(name);
         if (!chat) return;
@@ -281,7 +294,7 @@ export function createApp(host) {
     }
     // 这个条目现在开不开：绑定的书看这个聊天的选择，没绑的书看原书
     function entryOn(name, entry) {
-        if (!bookNames().includes(name)) return entry.disable !== true;
+        if (!hasChat() || !bookNames().includes(name)) return entry.disable !== true;
         return resolveEntry(settings(), chatWorld(), name, entry.uid, entry.disable === true) ?? entry.disable !== true;
     }
     // 点开一个条目才看到的内容：关键词和正文，只读
@@ -294,19 +307,26 @@ export function createApp(host) {
             h('pre', { class: 'tvrm-detail-text' }, (entry.content || '').trim() || '（正文是空的）'));
     }
     // 管理面板里的一本书：默认折叠，标题旁一行状态；点开是分组小标签 + 所有条目（按组可折叠）
-    function bookCard(name, t) {
+    function bookCard(name, t, zone = 'bound') {
+        ensureBook(name);
         const { cfg, cats, sections, classified } = bookSections(name);
         const entries = entryCache.get(name) || [];
-        const bound = bookNames().includes(name);
+        const bound = hasChat() && bookNames().includes(name);
+        const loaded = entryCache.has(name);
         const onCount = entries.filter(e => entryOn(name, e)).length;
-        const card = h('details', { class: 'tvrm-card', open: openBooks.has(name) });
-        card.addEventListener('toggle', () => { if (card.open) openBooks.add(name); else openBooks.delete(name); });
+        const card = h('details', { class: 'tvrm-card', open: openBooks.has(zone + '|' + name) });
+        card.dataset.book = name; card.dataset.zone = zone;
+        card.addEventListener('toggle', () => {
+            if (card.open) openBooks.add(zone + '|' + name); else openBooks.delete(zone + '|' + name);
+            // 还没读过的书：点开时才读，读完重画
+            if (card.open && !entryCache.has(name)) enqueue(async () => { await loadManagement(name, t); if (current(t)) renderPanel(); }).catch(() => {});
+        });
         card.append(h('summary', null, h('span', { class: 'tvrm-name' }, name),
-            h('small', { class: 'tvrm-count' }, `分类${classified} · 开${onCount}/${entries.length}${bound ? '' : ' · 未绑'}`)));
+            h('small', { class: 'tvrm-count' }, loaded ? `分类${classified} · 开${onCount}/${entries.length}${zone === 'all' && bound ? ' · 本聊天用着' : ''}` : '点开读取')));
         const body = h('div', { class: 'tvrm-card-body' });
         let pick = filters.get(name) || null;
         if (pick && !cfg.groups.some(g => g.id === pick)) pick = null;
-        const select = id => { if (id) filters.set(name, id); else filters.delete(name); openBooks.add(name); renderPanel(); };
+        const select = id => { if (id) filters.set(name, id); else filters.delete(name); openBooks.add(zone + '|' + name); renderPanel(); };
         // 小标签 = 自定义分组；点一下出现改名/删除，再点收起
         body.append(h('div', { class: 'tvrm-chips' },
             cfg.groups.map(g => h('button', { type: 'button', class: 'tvrm-chip' + (pick === g.id ? ' is-on' : ''), onclick: () => select(pick === g.id ? null : g.id) },
@@ -345,14 +365,14 @@ export function createApp(host) {
             section.addEventListener('toggle', () => { if (section.open) closedSections.delete(key); else closedSections.add(key); });
             for (const entry of g.members) {
                 const uid = String(entry.uid);
-                const ekey = name + '|' + uid;
+                const ekey = zone + '|' + name + '|' + uid;
                 const isOn = entryOn(name, entry);
                 const sel = h('select', { class: 'text_pole tvrm-bucket', 'aria-label': entryLabel(entry) + '归组' },
                     [{ id: BUCKET.FREE, name: '未分类' }, ...cats].map(x => h('option', { value: x.id, selected: x.id === g.id }, x.name)));
                 sel.addEventListener('change', () => {
                     if (!current(t)) return;
                     setBucket(cfg, uid, sel.value); saveSettings();
-                    if (sel.value === BUCKET.ON || sel.value === BUCKET.OFF) changeChat(t, name, c => { c.entries[name][uid] = sel.value === BUCKET.ON; });
+                    if (hasChat() && (sel.value === BUCKET.ON || sel.value === BUCKET.OFF)) changeChat(t, name, c => { c.entries[name][uid] = sel.value === BUCKET.ON; });
                     else renderPanel();
                 });
                 const wrap = h('div', { class: 'tvrm-entry-wrap' });
@@ -373,7 +393,7 @@ export function createApp(host) {
             if (!g.members.length) section.append(h('p', { class: 'tvrm-empty' }, '这一组还没有条目；在条目右边的下拉里选这个组。'));
             area.append(section);
         }
-        if (!entries.length) area.append(h('p', { class: 'tvrm-empty' }, '这本书里还没有条目。'));
+        if (!entries.length) area.append(h('p', { class: 'tvrm-empty' }, loaded ? '这本书里还没有条目。' : '正在读取…'));
         body.append(area);
         const hasBackup = !!bookMeta(settings(), name)?.backup;
         body.append(h('div', { class: 'tvrm-foot' },
@@ -440,12 +460,25 @@ export function createApp(host) {
         const t = token();
         panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => {}, 'tvrm-tab is-active'),
             h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'), h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
-        panelRoot.append(h('div', { class: 'tvrm-actions' }, button('这个聊天开哪些', () => showChat())));
-        const bound = bookNames();
-        const listed = listedNames();
-        panelRoot.append(h('h4', { class: 'tvrm-heading' }, `世界书（${listed.length}）· 当前聊天绑定 ${bound.length} 本`));
-        if (!listed.length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '当前角色没有绑定世界书，也没有启用的全局世界书。'));
-        for (const name of listed) panelRoot.append(bookCard(name, t));
+        const chatOn = hasChat();
+        if (chatOn) panelRoot.append(h('div', { class: 'tvrm-actions' }, button('这个聊天开哪些', () => showChat())));
+        // 第一块：这个聊天绑定的（没开聊天就不显示）
+        if (chatOn) {
+            const kinds = bindingKinds(ctx(), host.bindings?.(), allNames());
+            const shown = n => !settings().world.hidden?.includes(n);
+            panelRoot.append(h('h4', { class: 'tvrm-heading' }, '这个聊天绑定的'));
+            for (const [label, list] of [['角色世界书', kinds.character], ['聊天世界书', kinds.chat], ['全局世界书', kinds.global]]) {
+                const names = list.filter(shown);
+                panelRoot.append(h('h5', { class: 'tvrm-sub' }, `${label}（${names.length}）`));
+                if (!names.length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '没有'));
+                for (const name of names) panelRoot.append(bookCard(name, t, 'bound'));
+            }
+        }
+        // 第二块：酒馆里所有世界书（分没分类的都列）
+        const everything = allNames().filter(n => !settings().world.hidden?.includes(n));
+        panelRoot.append(h('h4', { class: 'tvrm-heading tvrm-heading-all' }, `所有世界书（${everything.length}）`));
+        if (!everything.length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '酒馆里还没有世界书。'));
+        for (const name of everything) panelRoot.append(bookCard(name, t, 'all'));
         const hidden = allNames().filter(n => settings().world.hidden?.includes(n));
         if (hidden.length) {
             const select = h('select', { class: 'text_pole', 'aria-label': '重新显示世界书' }, h('option', { value: '' }, '重新显示世界书…'), hidden.map(n => h('option', { value: n }, n)));
