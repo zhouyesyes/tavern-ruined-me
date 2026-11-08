@@ -297,3 +297,9 @@ details.tvrm-lv1 > summary { font-size: 1.02em; font-weight: 700; padding: 4px 0
 .tvrm-ro-row .tvrm-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tvrm-ro-entry.is-off .tvrm-name { opacity: .55; }
 .tvrm-ro-entry .tvrm-detail { margin: 2px 0 4px 14px; }
+/* 0.8.6：分组标题不再缩小（好点），靠缩进分主次：条目往右缩一截、左边一条淡线连着；归组下拉框改小 */
+.tvrm-entry-section { margin: 0; }
+.tvrm-entry-section > summary { font-size: .95em; color: var(--tvrm-text); letter-spacing: 0; padding: 5px 2px; margin: 0; min-height: 0; align-items: center; line-height: 1.4; }
+.tvrm-entry-section > summary small { color: var(--tvrm-dim); }
+.tvrm-entry-section > .tvrm-entry-wrap { margin-left: 14px; padding-left: 8px; border-left: 1px solid color-mix(in srgb, var(--tvrm-line) 70%, transparent); }
+.tvrm-entry .tvrm-bucket { flex: 0 0 auto; width: auto; min-width: 0; max-width: 5.5em; height: 22px; line-height: 20px; font-size: 11px; padding: 0 4px; margin: 0; border-radius: 6px; }
