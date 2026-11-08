@@ -13,7 +13,9 @@ export function whoInfo(c, who) {
     }
     const file = who.slice(2);
     const ch = (c.characters || []).find(x => x.avatar === file);
-    return { name: ch?.name || file.replace(/\.[^.]+$/, ''), avatar: ch ? '/thumbnail?type=avatar&file=' + encodeURIComponent(file) : null };
+    // 头像直接用 key 里存的头像文件名去拿缩略图：不靠在角色列表里找到它（列表没载完、找不到时以前就退成一个字）
+    const isImage = /\.(png|webp|jpe?g|gif)$/i.test(file);
+    return { name: ch?.name || file.replace(/\.[^.]+$/, ''), avatar: isImage ? '/thumbnail?type=avatar&file=' + encodeURIComponent(file) : null };
 }
 
 // keys → [{ who, name, avatar, keys: [...] }]；当前聊天所在的角色排最前，其余按名字
@@ -40,7 +42,9 @@ export function renderChatGroups({ h, c, keys, hereKey, open, prefix, title, ren
     };
     const all = keep(h('details', { class: 'tvrm-chats tvrm-lv1' }, h('summary', { class: 'tvrm-heading tvrm-heading-all' }, `${title}（${groups.length} 个角色）`)), prefix + ':all');
     for (const g of groups) {
-        const face = g.avatar ? h('img', { class: 'tvrm-face', src: g.avatar, alt: '' }) : h('span', { class: 'tvrm-face tvrm-face-letter' }, (g.name || '?').slice(0, 1));
+        const letter = () => h('span', { class: 'tvrm-face tvrm-face-letter' }, (g.name || '?').slice(0, 1));
+        let face = letter();
+        if (g.avatar) { face = h('img', { class: 'tvrm-face', src: g.avatar, alt: '' }); face.addEventListener('error', () => face.replaceWith(letter())); } // 图真的加载不了才换成字
         const box = keep(h('details', { class: 'tvrm-who' }, h('summary', null, face, h('span', { class: 'tvrm-name' }, g.name), h('small', { class: 'tvrm-count' }, `${g.keys.length} 个聊天`))), prefix + ':' + g.who);
         const body = h('div', { class: 'tvrm-who-body' });
         for (const key of g.keys) body.append(renderChat(key, key === hereKey));
