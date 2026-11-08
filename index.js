@@ -34,15 +34,17 @@ function presetApplied() {
         setTimeout(done, 8000);
     });
 }
+// 当前聊天是谁的哪一个：key = 谁|聊天名（谁 = c:角色头像文件名 / g:群聊编号），世界书格和预设格共用
+const chatInfo = () => {
+    const c = getContext();
+    if (c.chatId == null) return null;
+    const who = c.groupId ? 'g:' + c.groupId : 'c:' + (c.characters?.[c.characterId]?.avatar ?? c.characterId);
+    return { key: who + '|' + c.chatId, label: (c.groupId ? c.groups?.find(g => String(g.id) === String(c.groupId))?.name : c.characters?.[c.characterId]?.name) + ' · ' + c.chatId };
+};
 const presetKeeper = createPresetKeeper({
     document,
     getContext,
-    chatInfo: () => {
-        const c = getContext();
-        if (c.chatId == null) return null;
-        const who = c.groupId ? 'g:' + c.groupId : 'c:' + (c.characters?.[c.characterId]?.avatar ?? c.characterId);
-        return { key: who + '|' + c.chatId, label: (c.groupId ? c.groups?.find(g => String(g.id) === String(c.groupId))?.name : c.characters?.[c.characterId]?.name) + ' · ' + c.chatId };
-    },
+    chatInfo,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
     confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
     prompt: async (title, value) => await callGenericPopup(title, POPUP_TYPE.INPUT, value),
@@ -97,6 +99,7 @@ const keyKeeper = createKeyKeeper({
 });
 
 const app = createApp({
+    chatInfo,
     presetKeeper,
     keyKeeper,
     document,

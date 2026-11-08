@@ -100,3 +100,13 @@ test('实际绑定：角色文件名而不是显示名；额外绑定、全局�
     assert.deepEqual(C.boundBookNames({ groupId: 'group', groups: [{ id: 'group', members: ['a.card.png', 'b.png'] }], characters }, binding, available), ['A', 'B', 'G', 'Extra']);
     assert.deepEqual(C.boundBookNames({ characters }, undefined, available), []);
 });
+
+test('旧版「恢复原书」留下的暂停标记不再起作用：书照样跟着聊天走', () => {
+    const s = C.normalizeSettings({ world: { books: { A: { groups: [], assign: {}, restored: true } }, wholeBooks: ['W'], wholeMeta: { W: { restored: true, backup: null } } } });
+    assert.equal(s.world.wholeMeta.W.restored, false);
+    s.world.books.A.restored = true; // 运行中被旧数据带进来也一样
+    const chat = { books: { A: true }, entries: { A: { 1: false } } };
+    assert.equal(C.resolveEntry(s, chat, 'A', '1'), false);
+    const plan = C.planWriteBack(s, chat, 'A', { entries: { 1: { uid: 1, disable: false } } });
+    assert.deepEqual(plan, [{ uid: 1, disable: true }]);
+});

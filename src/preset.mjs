@@ -1,4 +1,5 @@
 // 预设格：每个聊天记自己用的预设、条目开关和顺序。全部自己写。
+import { renderChatGroups, chatOf } from './chatGroups.mjs';
 // 切聊天时先上锁：读出这个聊天自己的配置 → 换回预设、写回开关和顺序 → 等写完才解锁；
 // 上锁期间的任何变化都不记，插件自己写回造成的变化也不记（和世界书同一套做法）。
 
@@ -167,19 +168,19 @@ export function createPresetKeeper(host) {
         const chats = store().chats; const keys = Object.keys(chats); const here = cur()?.key;
         container.replaceChildren();
         if (!keys.length) return; // 没有内容就什么都不放
-        container.append(h('h4', { class: 'tvrm-heading' }, `预设格（${keys.length} 个聊天）`));
-        for (const key of keys) {
-            const chat = chats[key];
-            // 聊天名一行，预设名一行，不挤在一起
-            const d = h('details', { class: 'tvrm-card tvrm-page', open: open.has(key) }, h('summary', null,
-                h('span', { class: 'tvrm-name' }, (chat.label || key) + (key === here ? '（当前）' : '')),
-                h('small', { class: 'tvrm-count' }, `${chat.preset || '未知预设'} · 存档${chat.saves.length}套`)));
-            d.addEventListener('toggle', () => { if (d.open) open.add(key); else open.delete(key); });
-            const body = h('div', { class: 'tvrm-card-body' });
-            body.append(setCard(chat, '在用', chat.active, true, key));
-            for (const s of chat.saves) body.append(setCard(chat, s.name, s, false, key));
-            d.append(body); container.append(d);
-        }
+        // 按角色分折叠（小头像），当前聊天所在的角色在最前；每个聊天一行聊天名、一行预设名
+        container.append(renderChatGroups({ h, c: ctx(), keys, hereKey: here, open, prefix: 'preset', title: '预设格',
+            renderChat: key => {
+                const chat = chats[key];
+                const d = h('details', { class: 'tvrm-card tvrm-page', open: open.has(key) }, h('summary', null,
+                    h('span', { class: 'tvrm-name' }, chatOf(key) + (key === here ? '（当前）' : '')),
+                    h('small', { class: 'tvrm-count' }, `${chat.preset || '未知预设'} · 存档${chat.saves.length}套`)));
+                d.addEventListener('toggle', () => { if (d.open) open.add(key); else open.delete(key); });
+                const body = h('div', { class: 'tvrm-card-body' });
+                body.append(setCard(chat, '在用', chat.active, true, key));
+                for (const s of chat.saves) body.append(setCard(chat, s.name, s, false, key));
+                d.append(body); return d;
+            } }));
     }
     return { onChatChanged, onPresetEvent, render, whenIdle: () => queue, store, doSwitch };
 }

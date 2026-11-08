@@ -88,14 +88,14 @@ test('面板：聊天名和预设名上下两行；没有聊天时整块不显�
     assert.equal(root.textContent, ''); // 空的就什么都不放
     await x.enter('A', '聊天A'); x.keeper.render(root);
     const sum = root.querySelector('.tvrm-page > summary');
-    assert.equal(sum.children.length, 2); assert.match(sum.children[0].textContent, /聊天A/); assert.match(sum.children[1].textContent, /P1/);
+    assert.equal(sum.children.length, 2); assert.match(sum.children[0].textContent, /^A（当前）$/); assert.match(sum.children[1].textContent, /P1/); // 聊天名取 key 里的那段
 });
 
 test('面板：总面板默认折叠、一行小字；点开聊天看在用和存档，再点开看条目', async () => {
     const x = setup(); await x.enter('A', '聊天A'); saveAs(x.keeper.store().chats.A, '');
     const root = x.document.getElementById('r'); x.keeper.render(root);
     const page = root.querySelector('.tvrm-page'); assert.ok(!page.open);
-    assert.match(page.querySelector('summary').textContent, /聊天A.*P1.*存档1套/);
+    assert.match(page.querySelector('summary').textContent, /A.*P1.*存档1套/);
     assert.equal(page.querySelectorAll('.tvrm-set').length, 2);
     assert.match(page.textContent, /条目a/);
 });
