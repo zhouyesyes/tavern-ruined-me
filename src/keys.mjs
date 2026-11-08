@@ -31,8 +31,6 @@ export function newKey(p = {}) {
         models: Array.isArray(p.models) ? p.models.filter(m => typeof m === 'string') : [],
         tags: [...new Set((Array.isArray(p.tags) ? p.tags : String(p.tags || '').split(/[,，\s]+/)).map(str).filter(Boolean))],
         note: typeof p.note === 'string' ? p.note : '',
-        // 放进了酒馆反代列表的哪个预设（名字）
-        proxyName: str(p.proxyName),
         at: Number(p.at) || Date.now(),
     };
 }
@@ -63,13 +61,6 @@ export const sameKey = (a, b) => normalizeUrl(a.url) === normalizeUrl(b.url)
 export function parseModels(res) {
     const list = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : Array.isArray(res?.models) ? res.models : [];
     return [...new Set(list.map(m => (typeof m === 'string' ? m : m?.id || m?.name || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-}
-
-// 反代预设起名：不和已有的重名（重名就加 2、3……）
-export function freeProxyName(name, taken) {
-    const set = new Set(taken); const base = str(name) || '新的反代';
-    if (!set.has(base)) return base;
-    for (let i = 2; ; i++) if (!set.has(`${base} ${i}`)) return `${base} ${i}`;
 }
 
 // ---- 认框：这个输入框是填地址的、填密钥的，还是都不是 ----
