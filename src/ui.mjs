@@ -13,6 +13,10 @@ export function createApp(host) {
     const toast = (kind, msg) => host.toast?.(kind, msg);
     let panelRoot = null;
     let ready = null;
+    let selectedBook = null;
+    let chatPopup = null;
+    const managementChats = new Map();
+    const displayChat = name => bookNames().includes(name) ? chatWorld() : managementChats.get(name);
     let queue = Promise.resolve();
     let revision = 0;
     let ownSave = false;
@@ -108,11 +112,13 @@ export function createApp(host) {
         if (!current(t)) return;
         await persistChat(t);
         saveSettings();
+        if (selectedBook && !bookNames().includes(selectedBook) && allNames().includes(selectedBook)) await loadManagement(selectedBook, t);
+        if (!current(t)) return;
         renderPanel();
         syncNative();
     }
-    async function writePlan(t, name, data, chat) {
-        if (!current(t) || !bookNames().includes(name)) return;
+    async function writePlan(t, name, data, chat, manual = false) {
+        if (!current(t) || (!manual && !bookNames().includes(name))) return;
         const s = settings();
         const meta = bookMeta(s, name, true);
         if (meta?.restored) return;
@@ -138,6 +144,9 @@ export function createApp(host) {
         pending.clear();
         ready = null;
         scheduleWriteBack.cancel();
+        if (chatPopup) chatPopup.content.replaceChildren(h('p', null, '聊天已变化，请关闭后重新打开'));
+        chatPopup = null;
+        managementChats.clear();
         if (panelRoot) panelRoot.replaceChildren(h('p', { class: 'tvrm-empty' }, '正在读取当前聊天…'));
         const t = token();
         return enqueue(() => synchronize(t));
@@ -180,7 +189,8 @@ export function createApp(host) {
     }
     function changeChat(t, name, fn) {
         if (!current(t) || !current(ready)) { toast('info', '聊天已变化，请等面板重新载入'); return; }
-        const chat = chatWorld();
+        const chat = displayChat(name);
+        if (!chat) return;
         const before = clone(chat);
         fn(chat);
         const changes = pending.get(name) || { entries: {} };
@@ -202,7 +212,7 @@ export function createApp(host) {
             if (dirty.book !== undefined) chat.books[name] = dirty.book;
             await persistChat(t);
             const written = clone(dirty);
-            await writePlan(t, name, data, chat);
+            await writePlan(t, name, data, chat, true);
             if (!current(t)) return;
             const latest = pending.get(name);
             for (const [uid, value] of Object.entries(written.entries)) if (latest?.entries[uid] === value) delete latest.entries[uid];
@@ -239,7 +249,7 @@ export function createApp(host) {
         return h('button', { type: 'button', class: 'tvrm-restore', disabled: !bookMeta(settings(), name)?.backup, onclick: () => restoreBook(name, t) }, '恢复原书');
     }
     function wholeCard(name, t) {
-        const chat = chatWorld();
+        const chat = displayChat(name);
         const card = h('section', { class: 'tvrm-card' });
         const header = switchRow({ name, checked: chat.books[name] !== false, cls: 'tvrm-master',
             onToggle: on => changeChat(t, name, c => { c.books[name] = on; }) });
@@ -254,7 +264,7 @@ export function createApp(host) {
     function bookCard(name, t) {
         const s = settings();
         const cfg = s.world.books[name];
-        const chat = chatWorld();
+        const chat = displayChat(name);
         const entries = entryCache.get(name) || [];
         const card = wholeCard(name, t);
         const groups = h('details', { class: 'tvrm-group-settings' }, h('summary', null, '分组设置', h('span', { class: 'tvrm-count' }, String(cfg.groups.length))));
@@ -347,11 +357,71 @@ export function createApp(host) {
             toast('success', '条目已保存');
         });
     }
+    // 未绑定书只手动管理，不加入聊天候选或自动同步范围。
+    async function loadManagement(name, t) {
+        const data = await readBook(name);
+        if (!current(t)) return;
+        ensureBook(name);
+        managementChats.set(name, { groups: {}, books: { [name]: true }, entries: {
+            [name]: Object.fromEntries(Object.values(data.entries).map(e => [String(e.uid), !e.disable])),
+        } });
+    }
+    async function showChat(status = false) {
+        await flushWriteBack();
+        if (!current(ready)) return;
+        const content = h('div', { class: 'tvrm-popup' });
+        const popup = { content, status };
+        chatPopup = popup;
+        renderChatPopup();
+        try { await host.popup(content, null); }
+        finally { if (chatPopup === popup) chatPopup = null; }
+    }
+    function renderChatPopup() {
+        if (!chatPopup || !current(ready)) return;
+        const { content, status } = chatPopup;
+        const t = token();
+        content.replaceChildren(h('h3', null, status ? '世界书状态' : '重选当前聊天'));
+        for (const name of bookNames()) content.append(settings().world.books[name] && settings().world.books[name].mode !== 'whole' ? bookCard(name, t) : wholeCard(name, t));
+        if (!bookNames().length) content.append('当前角色没有绑定世界书，也没有启用的全局世界书。');
+        if (status) for (const el of content.querySelectorAll('input, select, button')) el.disabled = true;
+    }
     function renderPanel() {
         if (!panelRoot || !current(ready)) return;
+        renderChatPopup();
         const t = token();
         panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => {}, 'tvrm-tab is-active'),
             h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'), h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
+        panelRoot.append(h('div', { class: 'tvrm-tabs' }, button('重选当前聊天', () => showChat()), button('看世界书状态', () => showChat(true))));
+        const chooser = h('select', { class: 'text_pole', 'aria-label': '世界书下拉选择' },
+            h('option', { value: '' }, '当前聊天选定'), allNames().map(n => h('option', { value: n, selected: n === selectedBook }, n)));
+        chooser.addEventListener('change', () => {
+            selectedBook = chooser.value || null;
+            const name = selectedBook;
+            enqueue(async () => {
+                if (!current(t)) return;
+                if (name && !bookNames().includes(name)) await loadManagement(name, t);
+                if (current(t)) renderPanel();
+            });
+        });
+        panelRoot.append(chooser);
+        if (selectedBook && !allNames().includes(selectedBook)) selectedBook = null;
+        if (selectedBook) {
+            const name = selectedBook;
+            const cfg = settings().world.books[name];
+            const mode = h('select', { class: 'text_pole', 'aria-label': '世界书管理方式' },
+                h('option', { value: 'entries', selected: cfg && cfg.mode !== 'whole' }, '按条目分组'),
+                h('option', { value: 'whole', selected: !cfg || cfg.mode === 'whole' }, '整本开关'));
+            mode.addEventListener('change', () => {
+                if (!current(t)) return;
+                // 切换显示方式保留原分组、归属和首次备份。
+                settings().world.books[name] ??= { ...newBookCfg(), ...settings().world.wholeMeta[name] };
+                settings().world.books[name].mode = mode.value;
+                saveSettings(); renderPanel();
+            });
+            panelRoot.append(mode);
+            if (displayChat(name)) panelRoot.append(cfg && cfg.mode !== 'whole' ? bookCard(name, t) : wholeCard(name, t));
+            return;
+        }
         if (!bookNames().length) panelRoot.append(h('p', { class: 'tvrm-empty' }, '当前角色没有绑定世界书，也没有启用的全局世界书。'));
         const hidden = visibleNames().filter(n => settings().world.hidden?.includes(n));
         if (hidden.length) {
@@ -362,7 +432,7 @@ export function createApp(host) {
             });
             panelRoot.append(select);
         }
-        for (const name of bookNames()) panelRoot.append(settings().world.books[name] ? bookCard(name, t) : wholeCard(name, t));
+        for (const name of bookNames()) panelRoot.append(settings().world.books[name] && settings().world.books[name].mode !== 'whole' ? bookCard(name, t) : wholeCard(name, t));
     }
     function mountPanel() {
         const target = doc.getElementById('extensions_settings2') || doc.getElementById('extensions_settings');

@@ -34,7 +34,7 @@ test('仅当前角色主书和全局书；新建、切换均不弹窗', async ()
     assert.equal(popups.length, 0);
     assert.equal(document.querySelectorAll('.tvrm-card').length, 2);
     assert.match(document.body.textContent, /未分组/);
-    assert.doesNotMatch(document.body.textContent, /Other/);
+    assert.ok([...document.querySelectorAll('.tvrm-card')].every(e => !e.textContent.includes('Other')));
     assert.equal(document.querySelector('.tvrm-group-settings').open, false);
 });
 
@@ -178,4 +178,58 @@ test('原生页面重建后开关同步；空世界书选择不能误认作第�
     const select = x.document.getElementById('world_editor_select'); select.value = '0'; select.dispatchEvent(new x.document.defaultView.Event('change', { bubbles: true })); await x.run();
     assert.match(x.document.querySelector('.tvrm-note-line').textContent, /聊天配置/);
     assert.ok(x.document.querySelector('[name=entryKillSwitch]').classList.contains('fa-toggle-on'));
+});
+
+async function selectBook(x, name) {
+    const select = x.document.querySelector('[aria-label="世界书下拉选择"]');
+    select.value = name; select.dispatchEvent(new x.document.defaultView.Event('change'));
+    await x.app.whenIdle();
+}
+
+test('旧配置原组原归属原备份保留；全部书可浏览，浏览不写原书或聊天', async () => {
+    const x = setup();
+    const backup = { at: 123, data: copy(x.books.Other) };
+    const legacy = { groups: [{ id: 'old', name: '原来的组' }], assign: { 4: 'old' }, backup, custom: '保留' };
+    x.ctx.extensionSettings.tavern_ruined_me = { world: { books: { Other: copy(legacy) }, wholeBooks: ['G'], wholeMeta: { G: { backup: { at: 456, data: copy(x.books.G) } } }, hidden: ['Other'] } };
+    await x.app.init();
+    const chat = copy(x.ctx.chatMetadata);
+    await selectBook(x, 'Other');
+    assert.match(x.document.querySelector('.tvrm-card').textContent, /原来的组（1）/);
+    assert.match(x.document.body.textContent, /未分组/);
+    assert.deepEqual(x.ctx.chatMetadata, chat);
+    assert.equal(x.saved.length, 0);
+    const cfg = x.app.settings().world.books.Other;
+    assert.deepEqual(cfg.groups, legacy.groups); assert.deepEqual(cfg.assign, legacy.assign);
+    assert.deepEqual(cfg.backup, backup); assert.equal(cfg.custom, '保留');
+    const mode = x.document.querySelector('[aria-label="世界书管理方式"]');
+    mode.value = 'whole'; mode.dispatchEvent(new x.document.defaultView.Event('change'));
+    assert.equal(x.document.querySelector('.tvrm-entries'), null);
+    const back = x.document.querySelector('[aria-label="世界书管理方式"]'); back.value = 'entries'; back.dispatchEvent(new x.document.defaultView.Event('change'));
+    assert.match(x.document.body.textContent, /原来的组（1）/);
+    assert.deepEqual(cfg.backup, backup); assert.deepEqual(cfg.assign, legacy.assign);
+    await selectBook(x, 'G'); assert.equal(x.document.querySelector('.tvrm-entries'), null);
+    assert.equal(x.app.settings().world.wholeMeta.G.backup.at, 456);
+});
+
+test('未绑定书可手动开关编辑，但切聊天和生成不自动接管；手动入口只含绑定候选', async () => {
+    const x = setup(); await x.app.init();
+    await selectBook(x, 'Other');
+    x.toggle('条目 #4', false); await x.app.whenIdle();
+    assert.equal(x.books.Other.entries[4].disable, true);
+    assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.Other, undefined);
+    x.host.popup = async el => { el.querySelector('textarea').value = '手动编辑'; return true; };
+    x.document.querySelector('.tvrm-edit').click(); await x.tick();
+    assert.equal(x.books.Other.entries[4].content, '手动编辑');
+    x.books.Other.entries[4].disable = false;
+    x.ctx.chatId = 'next'; x.ctx.chatMetadata = {}; await x.app.onChatChanged();
+    assert.equal(x.books.Other.entries[4].disable, false);
+    const payload = { characterLore: [{ world: 'Other', uid: 4, disable: false }] };
+    await x.app.onEntriesLoaded(payload); assert.equal(payload.characterLore[0].disable, false);
+    x.host.popup = async el => { x.popups.push(el); return true; };
+    for (const label of ['重选当前聊天', '看世界书状态']) {
+        [...x.document.querySelectorAll('button')].find(e => e.textContent === label).click(); await x.tick();
+        const popup = x.popups.at(-1);
+        assert.equal(popup.querySelectorAll('.tvrm-card').length, 2);
+        assert.doesNotMatch(popup.textContent, /Other/);
+    }
 });
