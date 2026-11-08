@@ -110,10 +110,13 @@ test('框在弹窗里：小钥匙和选单放进那个弹窗（不然会被弹�
 test('扫描：找出各插件存的地址+密钥（含列表里的、嵌套的），跳过编号、关键词、我们自己', () => {
     const settings = {
         imageGen: { apiUrl: 'https://img.com/v1', apiKey: 'sk-img-123456', model: 'flux' },
-        translator: { channels: [{ name: '翻译主力', endpoint: 'https://tr.com', token: 'tok-abcdefgh' }, { name: '空的', endpoint: '', token: '' }] },
+        translator: { channels: [{ name: '翻译主力', endpoint: 'https://tr.com', token: 'tok-abc12345xyz' }, { name: '空的', endpoint: '', token: '' }] },
         stSecret: { api_key_custom: '0b5e7f1a-1234-4abc-9def-001122334455' },
         lore: { keyword: 'dragonslayer', key: 'short' },
         loneKey: { secret: 'sk-lonely-999' },
+        quickReplyV2: { config: { setListDom: { jQuery3510623: { uiSortable: { document: [{ 'TH-script': { tavern_events: { SECRET_WRITTEN: 'secret_written', STREAM_TOKEN_RECEIVED_FULLY: 'js_stream_token_received_fully' }, localStorage: { 'x:token_meter:v1': '{"ver":1,"x":false}' } } }] } } } } },
+        apiVault: { profiles: [{ stRef: { key: 'api_key_deepseek', id: 'x' } }] },
+        events: { token: 'reasoning_token_received' },
         tavern_ruined_me_keys: { keys: [{ url: 'https://mine.com', key: 'sk-mine-0000' }] },
     };
     const r = scanSettings(settings, ['tavern_ruined_me_keys']);
