@@ -65,7 +65,7 @@ test('写回计划：只改有差别的；没变化是空', () => {
     for (const c of plan) data.entries[c.uid].disable = c.disable;
     assert.deepEqual(C.planWriteBack(s, chat, 'A', data), []);
 });
-test('写回计划：整本开→关→开 能还原；关闭写回则不动', () => {
+test('写回计划：整本开→关→开 能还原；旧关闭写回仍同步', () => {
     const s = mk();
     const orig = { entries: { 1: { uid: 1, disable: false }, 2: { uid: 2, disable: true } } };
     s.world.wholeMeta.W = { writeBack: true, backup: C.snapshotBook(orig) };
@@ -75,7 +75,7 @@ test('写回计划：整本开→关→开 能还原；关闭写回则不动', (
     for (const c of C.planWriteBack(s, { books: { W: true } }, 'W', data)) data.entries[c.uid].disable = c.disable;
     assert.deepEqual(Object.values(data.entries).map(e => e.disable), [false, true]);
     s.world.wholeMeta.W.writeBack = false;
-    assert.deepEqual(C.planWriteBack(s, { books: { W: false } }, 'W', data), []);
+    assert.deepEqual(C.planWriteBack(s, { books: { W: false } }, 'W', data), [{ uid: 1, disable: true }]);
 });
 test('防抖：连拨合成一次', () => {
     const q = []; let n = 0;

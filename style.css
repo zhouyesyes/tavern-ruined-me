@@ -75,3 +75,21 @@
     .tvrm-bucket { max-width: 46%; }
     .tvrm-card-head { padding: 8px; }
 }
+
+/* 覆盖酒馆主题对通用按钮的竖排与宽度设置。 */
+.tvrm-panel, .tvrm-popup { font-size: 14px; min-width: 0; }
+.tvrm-panel .menu_button, .tvrm-popup .menu_button {
+    display: inline-flex; flex-direction: row; align-items: center; justify-content: center;
+    width: auto; min-width: 0; flex: 0 0 auto; white-space: nowrap;
+    writing-mode: horizontal-tb; font-size: 12px; line-height: 1.4; padding: 4px 7px; margin: 0;
+}
+.tvrm-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tvrm-restore { display: block; border: 0; background: none; color: var(--tvrm-dim); font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer; }
+.tvrm-restore:disabled { opacity: .45; cursor: default; }
+.tvrm-panel input.text_pole { min-width: 0; width: 100%; box-sizing: border-box; }
+@media (max-width: 480px) {
+    .tvrm-panel, .tvrm-popup { font-size: 13px; }
+    .tvrm-add .tvrm-select { flex-basis: 100%; }
+    .tvrm-tab { padding: 5px 8px; }
+    .tvrm-card-tools { flex-shrink: 0; }
+}
