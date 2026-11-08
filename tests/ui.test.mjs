@@ -404,6 +404,8 @@ test('所有聊天：同一个角色的两个聊天都列出来，各开各的�
     bookA.open = true; bookA.dispatchEvent(new x.document.defaultView.Event('toggle')); await x.tick();
     const line = [...bookA.querySelectorAll('li')].find(li => /条目一/.test(li.textContent));
     assert.ok(line.classList.contains('is-off'), '那个聊天里条目一是关的');
+    line.querySelector('.tvrm-expand').click();
+    assert.match(line.textContent, /正文/, '别的聊天里也能点开看条目正文');
     assert.equal(first.tavern_ruined_me.slots.world.entries.A['1'], false);
 });
 
