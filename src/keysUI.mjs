@@ -188,35 +188,35 @@ export function createKeyKeeper(host) {
     }
     // 框在弹窗（<dialog>，浏览器的最上层）里：小钥匙和选单也放进那个弹窗，不然会被它盖住看不见；不在弹窗里就放在页面上
     const layerOf = el => el?.closest?.('dialog[open]') || doc.body;
-    let follow = null; // 正在跟着的框：页面滚动、窗口变大小（键盘弹出收起）时重新对位置
+    let follow = null; // 正在贴着的框
     function hidePill() { pill?.remove(); pill = null; follow = null; }
     function closeSheet() { sheet?.remove(); sheet = null; }
-    // 小钥匙贴在框里面的右边尽头；页面滚动、键盘弹出时跟着框走（iPhone 点进框会自己滚一下，以前一滚就把钥匙藏了）
+    // 小钥匙直接插在输入框旁边、和它待在同一个盒子里，按框自己的位置贴在框里右边尽头：
+    // 页面怎么滚、键盘怎么弹都跟着框走（以前按屏幕位置算，键盘一推就偏到别处去了）
     function place(el) {
         if (!pill) return;
         if (!el.isConnected) { hidePill(); return; }
-        const r = el.getBoundingClientRect(); const layer = pill.parentElement;
-        const base = layer === doc.body || !layer ? { top: 0, left: 0 } : layer.getBoundingClientRect();
-        pill.style.visibility = r.width && r.height ? '' : 'hidden';
-        pill.style.top = Math.max(0, r.top - base.top + (r.height - 28) / 2) + 'px';
-        pill.style.left = Math.max(0, r.right - base.left - 32) + 'px';
+        pill.style.visibility = el.offsetWidth && el.offsetHeight ? '' : 'hidden';
+        pill.style.top = el.offsetTop + Math.max(0, (el.offsetHeight - 26) / 2) + 'px';
+        pill.style.left = el.offsetLeft + Math.max(0, el.offsetWidth - 30) + 'px';
     }
     function showPill(el, kind) {
         hidePill();
         if (!store().keys.length) return;
-        const layer = layerOf(el);
         pill = h('button', { type: 'button', class: 'tvrm-key-pill', title: '从钥匙本里填', 'aria-label': '从钥匙本里填' }, h('i', { class: 'fa-solid fa-key' }));
-        if (layer !== doc.body) pill.classList.add('in-dialog'); // 弹窗里按弹窗的位置算（弹窗自己是定位的）
-        // 按下去时不让输入框失焦（键盘不会收起又弹出）
+        // 按下去时不让输入框失焦；松手时打开列表（手机上 click 有时等不到）
+        let opened = false;
+        const openIt = e => { e.preventDefault(); if (opened) return; opened = true; setTimeout(() => { opened = false; }, 400); openSheet(kind); };
         pill.addEventListener('pointerdown', e => e.preventDefault());
         pill.addEventListener('mousedown', e => e.preventDefault());
-        pill.addEventListener('click', () => openSheet(kind));
-        layer.append(pill);
+        pill.addEventListener('pointerup', openIt);
+        pill.addEventListener('click', openIt);
+        el.after(pill);
         follow = el; place(el);
-        doc.defaultView.setTimeout(() => follow && place(follow), 350); // iPhone 键盘弹出、页面滚完以后再对一次
     }
     function openSheet(kind) {
         closeSheet();
+        target?.el?.blur?.(); // 先收起键盘，列表从下面出来才看得见
         let q = '';
         const list = h('div', { class: 'tvrm-key-sheet-list' });
         const draw = () => list.replaceChildren(...searchKeys(store().keys, q).map(k => {
@@ -238,12 +238,10 @@ export function createKeyKeeper(host) {
             const kind = kindOf(el);
             if (kind) { target = { el, kind }; showPill(el, kind); }
         });
+        // 框的大小变了（转屏、键盘弹出时页面重排）再贴一次
         const replace = () => { if (follow) place(follow); };
-        const win = doc.defaultView;
-        win.addEventListener('scroll', replace, { passive: true, capture: true });
-        win.addEventListener('resize', replace, { passive: true });
-        win.visualViewport?.addEventListener('resize', replace, { passive: true });
-        win.visualViewport?.addEventListener('scroll', replace, { passive: true });
+        doc.defaultView.addEventListener('resize', replace, { passive: true });
+        doc.defaultView.visualViewport?.addEventListener('resize', replace, { passive: true });
         // 点到别处（不是小钥匙、不是选单、不是这个框）才收起；不看「框有没有失焦」，iPhone 上失焦时机不准
         doc.addEventListener('pointerdown', e => {
             const t = e.composedPath?.()[0] || e.target;

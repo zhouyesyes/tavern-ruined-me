@@ -32,17 +32,17 @@ export function groupChats(c, keys, hereKey) {
 // h：建元素的小函数；open：记住哪些折叠是打开的（Set）；prefix：区分世界书格和预设格的折叠状态
 export function renderChatGroups({ h, c, keys, hereKey, open, prefix, title, renderChat }) {
     const groups = groupChats(c, keys, hereKey);
-    const keep = (el, id, dflt = false) => {
-        el.open = open.has(id) ? true : open.has('!' + id) ? false : dflt;
-        el.addEventListener('toggle', () => { open.delete(id); open.delete('!' + id); open.add(el.open ? id : '!' + id); });
+    // 全部默认收起，点开过的记住
+    const keep = (el, id) => {
+        el.open = open.has(id);
+        el.addEventListener('toggle', () => { if (el.open) open.add(id); else open.delete(id); });
         return el;
     };
-    const all = keep(h('details', { class: 'tvrm-chats' }, h('summary', { class: 'tvrm-heading tvrm-heading-all' }, `${title}（${groups.length} 个角色）`)), prefix + ':all', true);
+    const all = keep(h('details', { class: 'tvrm-chats tvrm-lv1' }, h('summary', { class: 'tvrm-heading tvrm-heading-all' }, `${title}（${groups.length} 个角色）`)), prefix + ':all');
     for (const g of groups) {
         const face = g.avatar ? h('img', { class: 'tvrm-face', src: g.avatar, alt: '' }) : h('span', { class: 'tvrm-face tvrm-face-letter' }, (g.name || '?').slice(0, 1));
-        const here = hereKey && whoOf(hereKey) === g.who;
-        const box = keep(h('details', { class: 'tvrm-card tvrm-who' }, h('summary', null, face, h('span', { class: 'tvrm-name' }, g.name), h('small', { class: 'tvrm-count' }, `${g.keys.length} 个聊天`))), prefix + ':' + g.who, here);
-        const body = h('div', { class: 'tvrm-card-body' });
+        const box = keep(h('details', { class: 'tvrm-who' }, h('summary', null, face, h('span', { class: 'tvrm-name' }, g.name), h('small', { class: 'tvrm-count' }, `${g.keys.length} 个聊天`))), prefix + ':' + g.who);
+        const body = h('div', { class: 'tvrm-who-body' });
         for (const key of g.keys) body.append(renderChat(key, key === hereKey));
         box.append(body); all.append(box);
     }
