@@ -443,8 +443,9 @@ export function createApp(host) {
         const keeper = host.presetKeeper;
         panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => { mode = 'world'; renderPanel(); }, 'tvrm-tab' + (mode === 'world' ? ' is-active' : '')),
             keeper ? button('预设', () => { mode = 'preset'; renderPanel(); }, 'tvrm-tab' + (mode === 'preset' ? ' is-active' : '')) : h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'),
-            h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
+            host.keyKeeper ? button('API', () => { mode = 'api'; renderPanel(); }, 'tvrm-tab' + (mode === 'api' ? ' is-active' : '')) : h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
         if (mode === 'preset' && keeper) { const box = h('div', { class: 'tvrm-presets' }); panelRoot.append(box); keeper.render(box); return; }
+        if (mode === 'api' && host.keyKeeper) { const box = h('div', { class: 'tvrm-keys' }); panelRoot.append(box); host.keyKeeper.render(box); return; }
         const chatOn = hasChat();
         if (chatOn) panelRoot.append(h('div', { class: 'tvrm-actions' }, button('这个聊天开哪些', () => showChat())));
         // 第一块：这个聊天绑定的（没开聊天就不显示；哪一段是空的，整段连小标题一起不显示）

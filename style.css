@@ -211,3 +211,42 @@ details.tvrm-all > .tvrm-card { margin-top: 5px; }
 .tvrm-rename { all: unset; box-sizing: border-box; cursor: pointer; color: var(--tvrm-text); font-weight: 600; overflow-wrap: anywhere; }
 .tvrm-rename small { color: var(--tvrm-dim); font-weight: 400; font-size: 10px; }
 .tvrm-set .tvrm-group-edit { padding: 2px 0; }
+/* API 格：钥匙本（跟着酒馆主题走，字号和别的格一样小） */
+.tvrm-keys { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tvrm-keys .tvrm-actions { display: flex; gap: 4px; align-items: center; }
+.tvrm-keys .tvrm-actions .text_pole { flex: 1; min-width: 0; margin: 0; }
+.tvrm-key > summary { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; cursor: pointer; list-style: none; }
+.tvrm-key > summary::-webkit-details-marker { display: none; }
+.tvrm-key > summary .tvrm-name, .tvrm-key > summary .tvrm-count { white-space: normal; overflow-wrap: anywhere; }
+.tvrm-key-line { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: .9em; }
+.tvrm-key-label { color: var(--tvrm-dim); flex: 0 0 2.6em; }
+.tvrm-key-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tvrm-btn-mini { padding: 1px 8px; font-size: .8em; margin: 0; }
+.tvrm-key-test { padding: 2px 8px; font-size: .85em; }
+.tvrm-key-test.is-ok { color: var(--tvrm-accent); }
+.tvrm-key-test.is-bad { color: var(--warning, #c55); overflow-wrap: anywhere; }
+.tvrm-key-models { padding: 2px 8px; }
+.tvrm-key-models > summary { cursor: pointer; font-size: .85em; color: var(--tvrm-dim); }
+.tvrm-key-model-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0; max-height: 40vh; overflow-y: auto; }
+.tvrm-chip { all: unset; box-sizing: border-box; cursor: pointer; font-size: .8em; padding: 1px 8px; border: 1px solid var(--tvrm-line); border-radius: 10px; overflow-wrap: anywhere; }
+.tvrm-chip.is-on { border-color: var(--tvrm-accent); color: var(--tvrm-accent); }
+.tvrm-key-editor { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; }
+.tvrm-key-field { display: flex; align-items: center; gap: 6px; margin: 0; }
+.tvrm-key-field > span { flex: 0 0 2.6em; color: var(--tvrm-dim); font-size: .9em; }
+.tvrm-key-field .text_pole { flex: 1; min-width: 0; margin: 0; }
+.tvrm-key-check { display: flex; align-items: center; gap: 4px; font-size: .9em; margin: 0; }
+.tvrm-key-move { border: 1px dashed var(--tvrm-accent); border-radius: 6px; padding: 6px 8px; }
+.tvrm-key-move p { margin: 0 0 4px; }
+.tvrm-key-hint { color: var(--tvrm-dim); }
+/* 点哪填哪：输入框右边的小钥匙，和从下面弹上来的选单 */
+.tvrm-key-pill { position: absolute; z-index: 30000; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);
+    background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.tvrm-key-sheet { position: fixed; z-index: 30001; left: 0; right: 0; bottom: 0; max-height: 60vh; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); border-top: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .25); backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px)); }
+@media (min-width: 700px) { .tvrm-key-sheet { left: auto; right: 16px; bottom: 16px; width: 360px; border-radius: 12px; border: 1px solid var(--SmartThemeBorderColor, #888); } }
+.tvrm-key-sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.tvrm-key-sheet .text_pole { margin: 0; }
+.tvrm-key-sheet-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.tvrm-key-pick { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 6px; }
+.tvrm-key-pick small { color: var(--tvrm-dim, inherit); opacity: .75; overflow-wrap: anywhere; }
+.tvrm-key-pick.is-off { opacity: .5; }

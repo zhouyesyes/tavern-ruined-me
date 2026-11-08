@@ -1,11 +1,11 @@
 # 酒馆你害我不浅
 
-SillyTavern 前端扩展。目前提供世界书面板；预设和 API 留作后续功能。
+SillyTavern 前端扩展。三格：世界书、预设、API（钥匙本）。
 
 ## 安装和更新
 
 酒馆 → 扩展 → 安装扩展，填入 `https://github.com/zhouyesyes/tavern-ruined-me`。
-已安装的在扩展管理中更新，再刷新酒馆，版本 **0.6.2**。
+已安装的在扩展管理中更新，再刷新酒馆，版本 **0.7.0**。
 
 ## 世界书面板
 
@@ -68,3 +68,15 @@ node --check src/ui.mjs
 - 记录手动改动：`OAI_PRESET_CHANGED_AFTER`、`SETTINGS_UPDATED` 事件
 - 切聊天（0.6.2）：酒馆先换「当前聊天」、过一会儿才发 `CHAT_CHANGED`，中间常有一次 `SETTINGS_UPDATED`。手动改动只记进插件已经进好的那个聊天，聊天刚换、还没处理完时不记，免得把旧聊天的预设记到新聊天名下（0.6.1 及以前就是这样导致切聊天时预设不跟着换）
 - 旧一点的酒馆（0.6.1 起）：`openai.js` 整个模块一起导入（`import * as`），按名字取。没有 `openai_setting_names` 就按下拉里显示的预设名找选项；没有 `getPresetApplicationPromise`（1.18 及更早）就等酒馆换完预设内容后发的 `OAI_PRESET_CHANGED_AFTER`（最多 8 秒）。0.6.0 逐个导入这两个名字，旧酒馆少一个就整个插件加载失败、从扩展列表里消失
+
+## API 格：钥匙本（0.7.0）
+
+把「通用钥匙API管理器」的功能自己重写进来（没有照搬它的代码），做好后可以删掉它。这一段做的是：
+
+- 钥匙本：每条记名字、地址、密钥、模型、标签、备注；能搜、复制、编辑、删除。存在 `extensionSettings.tavern_ruined_me_keys`
+- 搬旧数据：发现旧插件的数据（`extensionSettings.apiVault`）时提示「搬过来」，只抄一份，旧的不动；一样的（同地址同密钥）跳过
+- 点哪填哪：点进任何插件的地址框或密钥框，框右边出一个小钥匙，点开从下面弹出选单，选一条就把这个框和旁边配对的框一起填好（触发 `input`、`change`，插件能收到）
+- 测连接：照酒馆「连接」按钮，`POST /api/backends/chat-completions/status`（`chat_completion_source: openai` + `reverse_proxy` + `proxy_password`），由酒馆服务器去拉 `/models`；通了列出模型，点一下就选上
+- 新建时默认也放进酒馆的反代列表（`openai.js` 的 `proxies`，下拉框 `#openai_proxy_preset`；只加不切换，重名自动加编号），新建时可以去掉这个勾；已有的条目可以点「放进酒馆反代」
+
+还没做（下一段）：改了一条时列出用到它的地方让她勾选要改哪些；外面改了钥匙时提示选「更新钥匙本 / 另存一条 / 先不管」；扫描酒馆和所有插件里存的地址密钥。
