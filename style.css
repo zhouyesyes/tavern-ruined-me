@@ -93,3 +93,30 @@
     .tvrm-tab { padding: 5px 8px; }
     .tvrm-card-tools { flex-shrink: 0; }
 }
+
+/* 总开关醒目，分组设置收小，条目直接铺开。 */
+.tvrm-book-header { display: flex; align-items: center; gap: 6px; padding: 4px 8px; }
+.tvrm-book-header .tvrm-master { flex: 1; min-width: 0; font-weight: 700; font-size: 1.08em; border: 0; }
+.tvrm-master .tvrm-name { overflow-wrap: anywhere; }
+.tvrm-card-tools { display: flex; align-items: center; gap: 4px; flex: none; }
+.tvrm-delete.menu_button, .tvrm-collapse.menu_button { min-width: 28px; min-height: 30px; margin: 0; padding: 4px 6px; font-size: .75em; }
+.tvrm-group-settings { margin: 0 10px 8px; border-bottom: 1px solid var(--tvrm-line); font-size: .85em; }
+.tvrm-group-settings > summary { cursor: pointer; padding: 7px 0; }
+.tvrm-group-settings .tvrm-count { margin-left: 6px; }
+.tvrm-group-edit > summary { display: flex; align-items: center; gap: 5px; cursor: pointer; list-style: none; padding: 3px 0; }
+.tvrm-group-edit > summary::-webkit-details-marker { display: none; }
+.tvrm-group-edit > summary .tvrm-name { flex: 1; overflow-wrap: anywhere; }
+.tvrm-group-edit[open] > summary .tvrm-triangle { transform: rotate(90deg); }
+.tvrm-group-edit-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 0; }
+.tvrm-group-edit-fields input { min-width: 0; flex: 1 1 100px; }
+.tvrm-save-feedback { flex-basis: 100%; }
+.tvrm-entries { padding: 0 10px; }
+.tvrm-entry-section h4 { margin: 12px 0 3px; font-size: .9em; }
+.tvrm-entry { border-bottom: 1px solid var(--tvrm-line); padding-bottom: 6px; }
+.tvrm-entry .tvrm-row { border: 0; padding: 8px 0 4px; gap: 8px; }
+.tvrm-entry-tools { display: flex; align-items: center; gap: 5px; }
+.tvrm-entry-tools .tvrm-sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tvrm-entry-tools .tvrm-bucket { width: auto; max-width: 45%; min-width: 70px; font-size: .8em; margin: 0; }
+.tvrm-entry-tools .tvrm-edit { font-size: .8em; padding: 4px 6px; margin: 0; }
+.tvrm-editor { display: flex; flex-direction: column; gap: 8px; }
+.tvrm-card [hidden] { display: none !important; }

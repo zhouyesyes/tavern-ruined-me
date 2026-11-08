@@ -91,3 +91,12 @@ test('删组后条目回到不管', () => {
     assert.equal(C.bucketOf(cfg, 3), 'free');
     assert.equal(C.bucketOf(cfg, 1), 'on');
 });
+
+test('实际绑定：角色文件名而不是显示名；额外绑定、全局、群组成员，排除其它角色', () => {
+    const characters = [{ name: '同名', avatar: 'a.card.png', data: { extensions: { world: 'A' } } }, { name: '同名', avatar: 'b.png', data: { extensions: { world: 'B' } } }];
+    const binding = { global: ['G'], charLore: [{ name: 'a.card', extraBooks: ['Extra'] }, { name: '同名', extraBooks: ['Wrong'] }] };
+    const available = ['A', 'B', 'G', 'Extra', 'Wrong'];
+    assert.deepEqual(C.boundBookNames({ characterId: 0, characters }, binding, available), ['A', 'G', 'Extra']);
+    assert.deepEqual(C.boundBookNames({ groupId: 'group', groups: [{ id: 'group', members: ['a.card.png', 'b.png'] }], characters }, binding, available), ['A', 'B', 'G', 'Extra']);
+    assert.deepEqual(C.boundBookNames({ characters }, undefined, available), []);
+});
