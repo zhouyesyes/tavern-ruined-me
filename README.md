@@ -5,7 +5,7 @@ SillyTavern 前端扩展。三格：世界书、预设、API（钥匙本）。
 ## 安装和更新
 
 酒馆 → 扩展 → 安装扩展，填入 `https://github.com/zhouyesyes/tavern-ruined-me`。
-已安装的在扩展管理中更新，再刷新酒馆，版本 **0.7.0**。
+已安装的在扩展管理中更新，再刷新酒馆，版本 **0.7.1**。
 
 ## 世界书面板
 
@@ -74,8 +74,7 @@ node --check src/ui.mjs
 把「通用钥匙API管理器」的功能自己重写进来（没有照搬它的代码），做好后可以删掉它。这一段做的是：
 
 - 钥匙本：每条记名字、地址、密钥、模型、标签、备注；能搜、复制、编辑、删除。存在 `extensionSettings.tavern_ruined_me_keys`
-- 搬旧数据：发现旧插件的数据（`extensionSettings.apiVault`）时提示「搬过来」，只抄一份，旧的不动；一样的（同地址同密钥）跳过
-- 点哪填哪：点进任何插件的地址框或密钥框，框右边出一个小钥匙，点开从下面弹出选单，选一条就把这个框和旁边配对的框一起填好（触发 `input`、`change`，插件能收到）
+- 点哪填哪：点进任何插件的地址框或密钥框，框右边出一个小钥匙，点开从下面弹出选单，选一条就把这个框和旁边配对的框一起填好（触发 `input`、`change`，插件能收到）。框在弹窗里（`<dialog>`，浏览器最上层，酒馆和很多插件的弹窗都是）时，小钥匙和选单放进那个弹窗里，不然会被盖住（0.7.1）
 - 测连接：照酒馆「连接」按钮，`POST /api/backends/chat-completions/status`（`chat_completion_source: openai` + `reverse_proxy` + `proxy_password`），由酒馆服务器去拉 `/models`；通了列出模型，点一下就选上
 - 新建时默认也放进酒馆的反代列表（`openai.js` 的 `proxies`，下拉框 `#openai_proxy_preset`；只加不切换，重名自动加编号），新建时可以去掉这个勾；已有的条目可以点「放进酒馆反代」
 

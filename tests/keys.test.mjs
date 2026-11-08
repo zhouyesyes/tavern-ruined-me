@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
-import { classifyField, importFromVault, normalizeUrl, newKey, maskKey, searchKeys, parseModels, freeProxyName } from '../src/keys.mjs';
+import { classifyField, normalizeUrl, newKey, maskKey, searchKeys, parseModels, freeProxyName } from '../src/keys.mjs';
 import { createKeyKeeper } from '../src/keysUI.mjs';
 
 test('认框：密钥框、地址框，别的不认', () => {
@@ -33,26 +33,12 @@ test('地址整理、遮住密钥、搜索、模型列表、反代起名不重�
     assert.equal(newKey({ url: 'https://c.com/v1' }).name, 'c.com');
 });
 
-test('从旧插件搬：抄过来，一样的跳过，旧的不动', () => {
-    const vault = { profiles: [
-        { id: 'p1', name: '主力中转', url: 'https://a.com/v1', key: 'sk-1', model: 'gpt-x', tags: ['中转'], note: '月底续费', proxyRef: { name: '主力中转' } },
-        { id: 'p2', name: '只有遮住的', url: 'https://b.com', key: '', keyHint: 'sk-***9' },
-        { id: 'p3', name: '空的' },
-    ] };
-    const before = JSON.stringify(vault);
-    const store = { keys: [] };
-    const r = importFromVault(store, vault);
-    assert.equal(r.added.length, 2); assert.equal(r.skipped, 1);
-    assert.equal(store.keys[0].note, '月底续费'); assert.equal(store.keys[0].proxyName, '主力中转'); assert.equal(store.keys[1].keyHint, 'sk-***9');
-    assert.equal(importFromVault(store, vault).added.length, 0); // 再搬一遍：一样的都跳过（只有遮住样子的那条按遮住的样子比）
-    assert.equal(JSON.stringify(vault), before);
-});
-
 function setup() {
     const dom = new JSDOM(`<body>
         <div class="form"><label for="u">接口地址</label><input id="u" type="text"><label>API Key<input id="k" type="password"></label></div>
         <div class="other"><input id="lonely" type="password" placeholder="secret"></div>
         <input id="tokens" type="text" name="max_tokens">
+        <dialog open id="hub"><label>API 端点 URL</label><div><input id="hu" type="text"></div><label>API 密钥 (Key)</label><div><input id="hk" type="password"></div></dialog>
         <div id="box"></div></body>`, { pretendToBeVisual: true });
     const document = dom.window.document;
     const ctx = { extensionSettings: {}, saveSettingsDebounced() {} };
@@ -76,13 +62,11 @@ test('点哪填哪：认出框，填一个顺手把配对的另一个也填上�
     assert.equal(lonely.value, 'sk-1'); // 没有配对的就只填这一个
 });
 
-test('面板：搬旧数据、新建默认进酒馆反代列表（不重名）、测连接拿到模型、挑模型', async () => {
+test('面板：新建默认进酒馆反代列表（不重名）、测连接拿到模型、挑模型；没有「搬过来」', async () => {
     const x = setup(); const d = x.document; const box = d.getElementById('box');
     x.ctx.extensionSettings.apiVault = { profiles: [{ name: '旧的', url: 'https://old.com', key: 'sk-old' }] };
     x.keeper.render(box);
-    assert.match(box.textContent, /存着 1 条/);
-    [...box.querySelectorAll('button')].find(b => b.textContent === '搬过来').click();
-    assert.equal(x.keeper.store().keys.length, 1); assert.match(box.textContent, /已从「通用钥匙API管理器」搬过/);
+    assert.doesNotMatch(box.textContent, /搬过来/);
     [...box.querySelectorAll('button')].find(b => b.textContent === '新建').click();
     const ed = box.querySelector('.tvrm-key-editor'); const inputs = ed.querySelectorAll('input');
     inputs[0].value = '主力'; inputs[1].value = 'https://new.com/v1'; inputs[2].value = 'sk-good';
@@ -106,4 +90,19 @@ test('新建时去掉「也放进酒馆的反代列表」就不放', () => {
     ed.querySelector('input[type=checkbox]').checked = false;
     [...ed.querySelectorAll('button')].find(b => b.textContent === '保存').click();
     assert.equal(x.proxies.length, 1); assert.equal(x.keeper.store().keys[0].proxyName, '');
+});
+
+test('框在弹窗里：小钥匙和选单放进那个弹窗（不然会被弹窗盖住）；不在弹窗里就放在页面上', () => {
+    const x = setup(); const d = x.document;
+    x.keeper.store().keys.push(newKey({ name: '主力', url: 'https://a.com/v1', key: 'sk-1' }));
+    x.keeper.initFill();
+    const hu = d.getElementById('hu'); hu.focus();
+    const pill = d.querySelector('.tvrm-key-pill'); assert.ok(pill, '有小钥匙');
+    assert.equal(pill.parentElement.id, 'hub'); assert.ok(pill.classList.contains('in-dialog'));
+    pill.click();
+    assert.equal(d.querySelector('.tvrm-key-sheet').parentElement.id, 'hub');
+    d.querySelector('.tvrm-key-pick').click();
+    assert.equal(hu.value, 'https://a.com/v1'); assert.equal(d.getElementById('hk').value, 'sk-1');
+    d.getElementById('u').focus();
+    assert.equal(d.querySelector('.tvrm-key-pill').parentElement, d.body);
 });
