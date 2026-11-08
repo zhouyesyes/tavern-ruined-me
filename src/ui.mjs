@@ -96,6 +96,7 @@ export function createApp(host) {
         const data = loaded ? clone(loaded) : null;
         if (!data?.entries) throw new Error('无法读取世界书：' + name);
         entryCache.set(name, Object.values(data.entries).sort((a, b) => (a.displayIndex ?? a.uid) - (b.displayIndex ?? b.uid)));
+        pruneIndex(name, data);
         return data;
     }
     async function synchronize(t, restore = false) {
@@ -157,6 +158,16 @@ export function createApp(host) {
         }
         renderPanel();
         syncNative();
+    }
+    // 原书里删掉的条目，各个聊天的小账里也去掉（不然别的聊天里会冒出「条目 25」这种没名字的）
+    function pruneIndex(name, data) {
+        const have = new Set(Object.values(data?.entries || {}).map(e => String(e.uid)));
+        let changed = false;
+        for (const rec of Object.values(settings().world.index || {})) {
+            const m = rec?.books?.[name]; if (!m) continue;
+            for (const uid of Object.keys(m)) if (!have.has(uid)) { delete m[uid]; changed = true; }
+        }
+        if (changed) saveSettings();
     }
     // 这个聊天开了哪些，抄一份到小账里（面板按角色列出所有聊天时用）
     function noteIndex() {
@@ -516,14 +527,21 @@ export function createApp(host) {
             const book = h('details', { class: 'tvrm-card tvrm-book-ro' }, h('summary', null, h('span', { class: 'tvrm-name' }, name), h('small', { class: 'tvrm-count' }, `开 ${on} / 共 ${Object.keys(entries).length}`)));
             const list = h('ol', { class: 'tvrm-ledger-lines' });
             const draw = () => {
-                const names = new Map((entryCache.get(name) || []).map(e => [String(e.uid), entryLabel(e)]));
-                list.replaceChildren(...Object.entries(entries).map(([uid, v]) => h('li', { class: v ? '' : 'is-off' },
-                    h('span', { class: 'tvrm-state ' + (v ? 'is-on' : 'is-off') }, v ? '开' : '关'), h('span', { class: 'tvrm-name' }, names.get(uid) || '条目 ' + uid))));
+                const cached = entryCache.get(name);
+                const names = new Map((cached || []).map(e => [String(e.uid), entryLabel(e)]));
+                list.replaceChildren(...Object.entries(entries).filter(([uid]) => !cached || names.has(uid)).map(([uid, v]) => h('li', { class: v ? '' : 'is-off' },
+                    h('span', { class: 'tvrm-state ' + (v ? 'is-on' : 'is-off'), title: v ? '开' : '关', 'aria-label': v ? '开' : '关' }), h('span', { class: 'tvrm-name' }, names.get(uid) || '条目 ' + uid))));
             };
             book.addEventListener('toggle', async () => {
                 if (!book.open) return;
                 draw();
-                if (!entryCache.has(name)) { try { await readBook(name); draw(); } catch { /* 读不到就只显示编号 */ } }
+                if (!entryCache.has(name)) {
+                    try {
+                        await readBook(name); draw();
+                        const n = Object.values(entries).filter(Boolean).length; // 删掉的条目清掉以后重算
+                        book.querySelector('summary small').textContent = `开 ${n} / 共 ${Object.keys(entries).length}`;
+                    } catch { /* 读不到就只显示编号 */ }
+                }
             });
             book.append(list); body.append(book);
         }
