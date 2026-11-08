@@ -27,7 +27,11 @@ export function normalizeSettings(raw) {
     out.world = { ...base.world, ...(s.world || {}) };
     if (!out.world.books || typeof out.world.books !== 'object') out.world.books = {};
     if (!Array.isArray(out.world.wholeBooks)) out.world.wholeBooks = [];
+    // 各个聊天开了哪些（小账）：面板里按角色列出所有聊天用。聊天自己的配置还是存在聊天里，这里只是一份抄本
+    if (!out.world.index || typeof out.world.index !== 'object') out.world.index = {};
     if (!out.world.wholeMeta || typeof out.world.wholeMeta !== 'object') out.world.wholeMeta = {};
+    // 「恢复原书 → 暂停接管」0.6.0 起已经去掉了（按钮和解除都没了），旧版留下的暂停标记一律清掉，不然那本书永远不跟着聊天走
+    for (const m of Object.values(out.world.wholeMeta)) if (m && typeof m === 'object') m.restored = false;
     for (const name of Object.keys(out.world.books)) {
         const b = out.world.books[name] || {};
         out.world.books[name] = {
@@ -130,7 +134,6 @@ export function seedWorldChat(settings, entriesByBook) {
 export function resolveEntry(settings, chat, book, uid, originalDisable = false) {
     uid = String(uid);
     const cfg = settings.world.books[book];
-    if (bookMeta(settings, book)?.restored) return null;
     if (chat?.books?.[book] === false) return false;
     const explicit = chat?.entries?.[book]?.[uid];
     if (typeof explicit === 'boolean') return explicit;
@@ -173,7 +176,6 @@ export function planWriteBack(settings, chat, book, bookData) {
     const changes = [];
     const meta = bookMeta(settings, book);
     if (!settings.world.books[book] && !settings.world.wholeBooks.includes(book)) return changes;
-    if (meta?.restored) return changes;
     const backup = meta?.backup?.data;
     for (const entry of Object.values(bookData?.entries || {})) {
         const orig = backup?.entries?.[entry.uid]?.disable ?? entry.disable;

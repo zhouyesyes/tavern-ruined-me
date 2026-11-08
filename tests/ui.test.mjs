@@ -21,6 +21,7 @@ function setup() {
         loadWorldInfo: async n => copy(books[n]), saveWorldInfo: async (n, data) => { books[n] = copy(data); saved.push(n); },
         popup: async (el, ok) => { if (ok) return true; popups.push(el); document.body.append(el); return new Promise(() => {}); }, toast: (kind, message) => toasts.push([kind, message]),
         timers: { setTimeout: f => { timers.push(f); return timers.length; }, clearTimeout: id => { timers[id - 1] = null; } } };
+    host.chatInfo = () => ctx.chatId == null ? null : { key: 'c:' + (ctx.characters?.[ctx.characterId]?.avatar ?? ctx.characterId) + '|' + ctx.chatId };
     const app = createApp(host);
     const run = async () => { for (const f of timers.splice(0)) if (f) await f(); await app.whenIdle(); };
     const tick = async () => { await new Promise(r => setTimeout(r, 0)); await app.whenIdle(); };
@@ -342,17 +343,17 @@ test('跟着聊天走：切聊天写回到一半，别的插件把书改回上�
     }
 });
 
-test('面板分两块：这个聊天绑定的（角色/聊天/全局三小段）和所有世界书；面板里没有开关', async () => {
+test('面板分两块：所有聊天（按角色分，当前聊天里分角色/聊天/全局三小段）和所有世界书；面板里没有开关', async () => {
     const x = setup();
     x.ctx.chatMetadata = { world_info: 'Other' };
     await x.app.init();
     const text = x.document.querySelector('.tvrm-panel').textContent;
-    assert.match(text, /这个聊天绑定的/); assert.match(text, /角色世界书（1）/); assert.match(text, /聊天世界书（1）/); assert.match(text, /全局世界书（1）/);
+    assert.match(text, /所有聊天（1 个角色）/); assert.match(text, /（当前）/); assert.match(text, /角色世界书（1）/); assert.match(text, /聊天世界书（1）/); assert.match(text, /全局世界书（1）/);
     assert.match(text, /所有世界书（3）/);
     assert.equal(x.document.querySelectorAll('.tvrm-card[data-zone="bound"]').length, 3);
     assert.equal(x.document.querySelectorAll('.tvrm-card[data-zone="all"]').length, 3);
     assert.equal(x.document.querySelector('.tvrm-panel input[type=checkbox]'), null);
-    assert.ok([...x.document.querySelectorAll('.tvrm-card')].every(c => !c.open));
+    assert.ok([...x.document.querySelectorAll('.tvrm-card[data-zone]')].every(c => !c.open)); // 每本书默认折叠（角色和当前聊天那层默认打开）
 });
 
 test('没开聊天：不显示「这个聊天绑定的」，所有世界书照样全列、点开能读到条目并分类，不写原书', async () => {
@@ -372,4 +373,29 @@ test('没开聊天：不显示「这个聊天绑定的」，所有世界书照�
     assert.equal(x.books.Other.entries[4].disable, false); // 没开聊天，不改原书
     assert.equal(x.app.settings().world.books.Other.assign['4'], 'off');
     assert.equal(x.saved.length, 0);
+});
+
+test('所有聊天：同一个角色的两个聊天都列出来，各开各的；当前聊天能改，别的聊天只看、点开能看到条目开没开', async () => {
+    const x = setup(); await x.app.init();
+    const first = x.ctx.chatMetadata;
+    await x.toggle('条目一', false); await x.app.whenIdle();
+    x.ctx.chatMetadata = {}; x.ctx.chatId = 'second'; await x.app.onChatChanged();
+    await x.toggle('条目一', true); await x.app.whenIdle();
+    x.document.querySelector('.tvrm-popup')?.remove();
+    x.app.renderPanel();
+    const panel = x.document.querySelector('.tvrm-panel');
+    const who = panel.querySelectorAll('.tvrm-chats > .tvrm-who');
+    assert.equal(who.length, 1); assert.match(who[0].querySelector('summary').textContent, /2 个聊天/);
+    const chats = [...who[0].querySelectorAll(':scope > .tvrm-card-body > .tvrm-set')];
+    assert.equal(chats.length, 2);
+    const here = chats.find(c => /second（当前）/.test(c.querySelector('summary').textContent));
+    const other = chats.find(c => /same-id/.test(c.querySelector('summary').textContent) && !/当前/.test(c.querySelector('summary').textContent));
+    assert.ok(here && other);
+    assert.ok(here.querySelector('.tvrm-card[data-zone="bound"]'), '当前聊天里是能改的书卡片');
+    assert.equal(other.querySelector('.tvrm-card[data-zone]'), null, '别的聊天只看');
+    const bookA = [...other.querySelectorAll('.tvrm-set')].find(b => /^A/.test(b.querySelector('summary').textContent));
+    bookA.open = true; bookA.dispatchEvent(new x.document.defaultView.Event('toggle')); await x.tick();
+    const line = [...bookA.querySelectorAll('li')].find(li => /条目一/.test(li.textContent));
+    assert.ok(line.classList.contains('is-off'), '那个聊天里条目一是关的');
+    assert.equal(first.tavern_ruined_me.slots.world.entries.A['1'], false);
 });
