@@ -453,6 +453,11 @@ export function createApp(host) {
             content.append(book);
         }
         if (!bookNames().length) content.append(h('p', { class: 'tvrm-empty' }, '当前角色没有绑定世界书，也没有启用的全局世界书。'));
+        if (bookNames().length) {
+            let total = 0, onN = 0;
+            for (const name of bookNames()) for (const e of entryCache.get(name) || []) { total++; if (resolveEntry(s, chat, name, String(e.uid), e.disable === true) ?? !e.disable) onN++; }
+            content.append(h('div', { class: 'tvrm-pop-total' }, `合计　开 ${onN} / 共 ${total}`));
+        }
         for (const [p, top] of scrolls) p.scrollTop = top;
     }
     function renderPanel() {
