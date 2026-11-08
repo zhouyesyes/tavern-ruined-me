@@ -334,13 +334,14 @@ export function createApp(host) {
             if (card.open && !entryCache.has(name)) enqueue(async () => { await loadManagement(name, t); if (current(t)) renderPanel(); }).catch(() => {});
         });
         card.append(h('summary', null, h('span', { class: 'tvrm-name' }, name),
-            h('small', { class: 'tvrm-count' }, loaded ? `分类${classified} · 开${onCount}/${entries.length}${zone === 'all' && bound ? ' · 本聊天用着' : ''}` : '点开读取')));
+            h('small', { class: 'tvrm-count' }, loaded ? `${zone === 'bound' ? '' : `分类${classified} · `}开${onCount}/${entries.length}${zone === 'all' && bound ? ' · 本聊天用着' : ''}` : '点开读取')));
         const body = h('div', { class: 'tvrm-card-body' });
+        const classify = zone !== 'bound'; // 分类只在「所有世界书」里做；当前聊天里只管开不开
         let pick = filters.get(name) || null;
         if (pick && !cfg.groups.some(g => g.id === pick)) pick = null;
         const select = id => { if (id) filters.set(name, id); else filters.delete(name); openBooks.add(zone + '|' + name); renderPanel(); };
         // 小标签 = 自定义分组；点一下出现改名/删除，再点收起
-        body.append(h('div', { class: 'tvrm-chips' },
+        if (classify) body.append(h('div', { class: 'tvrm-chips' },
             cfg.groups.map(g => h('button', { type: 'button', class: 'tvrm-chip' + (pick === g.id ? ' is-on' : ''), onclick: () => select(pick === g.id ? null : g.id) },
                 `${g.name} ${sections.find(x => x.id === g.id)?.members.length ?? 0}`)),
             h('button', { type: 'button', class: 'tvrm-chip tvrm-chip-add', 'aria-label': '新建分组', onclick: () => {
@@ -348,7 +349,7 @@ export function createApp(host) {
                 const g = { id: newGroupId(), name: '新分组 ' + (cfg.groups.length + 1) };
                 cfg.groups.push(g); saveSettings(); select(g.id);
             } }, '＋ 新建')));
-        const shown = pick && sections.find(g => g.id === pick);
+        const shown = classify && pick && sections.find(g => g.id === pick);
         if (shown?.custom) {
             const input = h('input', { class: 'text_pole', value: shown.name, 'aria-label': '分组名称' });
             const feedback = h('small', { role: 'status', class: 'tvrm-save-feedback' });
@@ -379,9 +380,9 @@ export function createApp(host) {
                 const uid = String(entry.uid);
                 const ekey = zone + '|' + name + '|' + uid;
                 const isOn = entryOn(name, entry);
-                const sel = h('select', { class: 'text_pole tvrm-bucket', 'aria-label': entryLabel(entry) + '归组' },
+                const sel = !classify ? null : h('select', { class: 'text_pole tvrm-bucket', 'aria-label': entryLabel(entry) + '归组' },
                     [{ id: BUCKET.FREE, name: '未分类' }, ...cats].map(x => h('option', { value: x.id, selected: x.id === g.id }, x.name)));
-                sel.addEventListener('change', () => {
+                sel?.addEventListener('change', () => {
                     if (!current(t)) return;
                     setBucket(cfg, uid, sel.value); saveSettings();
                     if (hasChat() && (sel.value === BUCKET.ON || sel.value === BUCKET.OFF)) changeChat(t, name, c => { c.entries[name][uid] = sel.value === BUCKET.ON; });
@@ -396,9 +397,9 @@ export function createApp(host) {
                     else { openEntries.add(ekey); showDetail(); }
                     arrow.classList.toggle('is-open', openEntries.has(ekey)); arrow.setAttribute('aria-expanded', openEntries.has(ekey) ? 'true' : 'false');
                 });
-                // 小开关：这个聊天开不开这一条（只在当前聊天用着这本书时出现）
+                // 小开关：这个聊天开不开这一条（只在当前聊天那块里；「所有世界书」里只管分类）
                 let mini = null;
-                if (bound) {
+                if (bound && !classify) {
                     const input = h('input', { type: 'checkbox', checked: isOn, 'aria-label': entryLabel(entry) + '开关' });
                     input.addEventListener('change', () => changeChat(t, name, c => { c.entries[name][uid] = input.checked; c.books[name] = true; }));
                     mini = h('label', { class: 'tvrm-mini-switch', title: '这个聊天开不开这一条' }, input, h('i'));
