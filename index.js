@@ -5,6 +5,8 @@ import { world_names, selected_world_info, world_info, loadWorldInfo, saveWorldI
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { createApp } from './src/ui.mjs';
 import { createPresetKeeper } from './src/preset.mjs';
+import { createKeyKeeper } from './src/keysUI.mjs';
+import { parseModels, normalizeUrl } from './src/keys.mjs';
 // 整个模块一起导入，按名字去取：酒馆旧一点、少导出一个名字时，插件照样能加载（逐个 import 少一个就整个插件加载失败、从扩展列表里消失）
 import * as oai from '../../../openai.js';
 
@@ -72,8 +74,40 @@ const presetKeeper = createPresetKeeper({
     },
 });
 
+// API 格（钥匙本）接到酒馆：
+// - 反代列表：openai.js 的 proxies（存在设置里），下拉框 #openai_proxy_preset；只往里加，不改当前选中的那个
+// - 测连接：照酒馆「连接」按钮，POST /api/backends/chat-completions/status，带 reverse_proxy + proxy_password，
+//   酒馆服务器去拉一次 /models（手机上不会被跨域拦），回来 { data: [模型] } 或 { error }
+const keyKeeper = createKeyKeeper({
+    document,
+    getContext,
+    toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
+    confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
+    proxy: {
+        names: () => (oai.proxies || []).map(p => p.name),
+        add: ({ name, url, password }) => {
+            if (!Array.isArray(oai.proxies)) throw new Error('这版酒馆找不到反代列表');
+            oai.proxies.push({ name, url, password });
+            const sel = document.getElementById('openai_proxy_preset');
+            if (sel) { const o = document.createElement('option'); o.value = name; o.textContent = name; sel.append(o); }
+            getContext().saveSettingsDebounced?.();
+        },
+    },
+    probe: async (url, key) => {
+        const res = await fetch('/api/backends/chat-completions/status', {
+            method: 'POST', headers: getContext().getRequestHeaders(), cache: 'no-cache',
+            body: JSON.stringify({ chat_completion_source: 'openai', reverse_proxy: normalizeUrl(url), proxy_password: key }),
+        });
+        if (!res.ok) throw new Error('酒馆返回 ' + res.status);
+        const data = await res.json();
+        if (data?.error) throw new Error(typeof data.error === 'string' ? data.error : data.error?.message || '地址或密钥不对');
+        return parseModels(data);
+    },
+});
+
 const app = createApp({
     presetKeeper,
+    keyKeeper,
     document,
     getContext,
     worldNames: () => world_names,
@@ -91,6 +125,7 @@ const app = createApp({
 
 jQuery(() => {
     app.init();
+    keyKeeper.initFill();
     presetKeeper.onChatChanged();
     eventSource.on(event_types.CHAT_CHANGED, presetKeeper.onChatChanged);
     // 在预设页拨开关、拖顺序、换预设：酒馆没有专门事件，借预设页上的操作和预设变更事件来记
