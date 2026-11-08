@@ -80,19 +80,20 @@ test('面板：新建、测连接拿到模型、挑模型；没有「搬过来�
     assert.equal(k.model, 'm1');
 });
 
-test('框在弹窗里：小钥匙和选单放进那个弹窗（不然会被弹窗盖住）；不在弹窗里就放在页面上', () => {
+test('小钥匙插在框后面（跟着框走）；框在弹窗里时选单也放进弹窗', () => {
     const x = setup(); const d = x.document;
     x.keeper.store().keys.push(newKey({ name: '主力', url: 'https://a.com/v1', key: 'sk-1' }));
     x.keeper.initFill();
     const hu = d.getElementById('hu'); hu.focus();
     const pill = d.querySelector('.tvrm-key-pill'); assert.ok(pill, '有小钥匙');
-    assert.equal(pill.parentElement.id, 'hub'); assert.ok(pill.classList.contains('in-dialog'));
+    assert.equal(pill.previousElementSibling, hu, '钥匙就插在框后面'); assert.ok(pill.closest('#hub'));
     pill.click();
     assert.equal(d.querySelector('.tvrm-key-sheet').parentElement.id, 'hub');
     d.querySelector('.tvrm-key-pick').click();
     assert.equal(hu.value, 'https://a.com/v1'); assert.equal(d.getElementById('hk').value, 'sk-1');
     d.getElementById('u').focus();
-    assert.equal(d.querySelector('.tvrm-key-pill').parentElement, d.body);
+    assert.equal(d.querySelector('.tvrm-key-pill').previousElementSibling, d.getElementById('u'));
+    assert.equal(d.querySelectorAll('.tvrm-key-pill').length, 1, '只有一把钥匙');
 });
 
 test('扫描：找出各插件存的地址+密钥（含列表里的、嵌套的），跳过编号、关键词、我们自己', () => {

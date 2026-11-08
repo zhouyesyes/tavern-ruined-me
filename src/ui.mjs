@@ -19,7 +19,7 @@ export function createApp(host) {
     const openBooks = new Set(); // 面板里展开的书，默认都折叠
     let allOpen = false; // 「所有世界书」大折叠，默认收起
     const filters = new Map(); // 每本书当前点中、正在改名的分组
-    const closedSections = new Set(); // 点收起的分组（书名|组id），默认全展开
+    const openSections = new Set(); // 点开的分组（书名|组id），默认全收起
     const openEntries = new Set(); // 点开看内容的条目（书名|uid）
     const managementChats = new Map();
     const displayChat = name => bookNames().includes(name) ? chatWorld() : managementChats.get(name);
@@ -361,9 +361,9 @@ export function createApp(host) {
             if (!g.members.length && !g.custom) continue;
             const key = name + '|' + g.id;
             const on = g.members.filter(e => entryOn(name, e)).length;
-            const section = h('details', { class: 'tvrm-entry-section', open: !closedSections.has(key) },
+            const section = h('details', { class: 'tvrm-entry-section', open: openSections.has(key) },
                 h('summary', null, h('span', null, `${g.name}（${g.members.length}）`), h('small', null, `开${on}`)));
-            section.addEventListener('toggle', () => { if (section.open) closedSections.delete(key); else closedSections.add(key); });
+            section.addEventListener('toggle', () => { if (section.open) openSections.add(key); else openSections.delete(key); });
             for (const entry of g.members) {
                 const uid = String(entry.uid);
                 const ekey = zone + '|' + name + '|' + uid;
@@ -385,8 +385,15 @@ export function createApp(host) {
                     else { openEntries.add(ekey); showDetail(); }
                     arrow.classList.toggle('is-open', openEntries.has(ekey)); arrow.setAttribute('aria-expanded', openEntries.has(ekey) ? 'true' : 'false');
                 });
+                // 小开关：这个聊天开不开这一条（只在当前聊天用着这本书时出现）
+                let mini = null;
+                if (bound) {
+                    const input = h('input', { type: 'checkbox', checked: isOn, 'aria-label': entryLabel(entry) + '开关' });
+                    input.addEventListener('change', () => changeChat(t, name, c => { c.entries[name][uid] = input.checked; c.books[name] = true; }));
+                    mini = h('label', { class: 'tvrm-mini-switch', title: '这个聊天开不开这一条' }, input, h('i'));
+                }
                 wrap.append(h('div', { class: 'tvrm-entry' + (isOn ? '' : ' is-off') },
-                    h('span', { class: 'tvrm-name', title: entrySub(entry) }, entryLabel(entry)), sel, arrow));
+                    h('span', { class: 'tvrm-name', title: entrySub(entry) }, entryLabel(entry)), sel, mini, arrow));
                 if (openEntries.has(ekey)) showDetail();
                 section.append(wrap);
             }
@@ -472,18 +479,18 @@ export function createApp(host) {
         // 第二块：酒馆里所有世界书，外面一个大折叠（默认收起），里面一本一本也默认收起
         const everything = allNames();
         if (everything.length) {
-            const all = h('details', { class: 'tvrm-all', open: allOpen }, h('summary', { class: 'tvrm-heading tvrm-heading-all' }, `所有世界书（${everything.length}）`));
+            const all = h('details', { class: 'tvrm-all tvrm-lv1', open: allOpen }, h('summary', { class: 'tvrm-heading tvrm-heading-all' }, `所有世界书（${everything.length}）`));
             all.addEventListener('toggle', () => { allOpen = all.open; });
             for (const name of everything) all.append(bookCard(name, t, 'all'));
             panelRoot.append(all);
         }
     }
     function chatFold(key, isHere, count) {
-        const d = h('details', { class: 'tvrm-set' + (isHere ? ' is-active' : '') }, h('summary', null,
+        const d = h('details', { class: 'tvrm-chat' + (isHere ? ' is-active' : '') }, h('summary', null,
             h('span', { class: 'tvrm-name' }, chatOf(key) + (isHere ? '（当前）' : '')), h('small', { class: 'tvrm-count' }, count)));
         const id = 'chat:' + key;
-        d.open = openChats.has(id) ? true : openChats.has('!' + id) ? false : isHere;
-        d.addEventListener('toggle', () => { openChats.delete(id); openChats.delete('!' + id); openChats.add(d.open ? id : '!' + id); });
+        d.open = openChats.has(id); // 默认收起
+        d.addEventListener('toggle', () => { if (d.open) openChats.add(id); else openChats.delete(id); });
         return d;
     }
     const tally = books => { let on = 0, all = 0; for (const m of Object.values(books || {})) for (const v of Object.values(m)) { all++; if (v) on++; } return `开 ${on} / 共 ${all}`; };
@@ -506,7 +513,7 @@ export function createApp(host) {
         const body = h('div', { class: 'tvrm-chat-body' });
         for (const [name, entries] of Object.entries(books)) {
             const on = Object.values(entries).filter(Boolean).length;
-            const book = h('details', { class: 'tvrm-set' }, h('summary', null, h('span', { class: 'tvrm-name' }, name), h('small', { class: 'tvrm-count' }, `开 ${on} / 共 ${Object.keys(entries).length}`)));
+            const book = h('details', { class: 'tvrm-card tvrm-book-ro' }, h('summary', null, h('span', { class: 'tvrm-name' }, name), h('small', { class: 'tvrm-count' }, `开 ${on} / 共 ${Object.keys(entries).length}`)));
             const list = h('ol', { class: 'tvrm-ledger-lines' });
             const draw = () => {
                 const names = new Map((entryCache.get(name) || []).map(e => [String(e.uid), entryLabel(e)]));

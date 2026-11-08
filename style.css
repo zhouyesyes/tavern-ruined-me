@@ -235,8 +235,7 @@ details.tvrm-all > .tvrm-card { margin-top: 5px; }
 .tvrm-key-field > span { flex: 0 0 2.6em; color: var(--tvrm-dim); font-size: .9em; }
 .tvrm-key-field .text_pole { flex: 1; min-width: 0; margin: 0; }
 /* 点哪填哪：输入框右边的小钥匙，和从下面弹上来的选单（框在弹窗里时放进那个弹窗，见 keysUI.mjs 的 layerOf） */
-.tvrm-key-pill.in-dialog { position: absolute; }
-.tvrm-key-pill { position: fixed; z-index: 2147483000; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);
+.tvrm-key-pill { position: absolute; z-index: 5; width: 26px; height: 26px; font-size: 12px; box-sizing: border-box; margin: 0; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);
     background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .tvrm-key-sheet { position: fixed; z-index: 2147483001; left: 0; right: 0; bottom: 0; max-height: 60vh; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     background: var(--SmartThemeBlurTintColor, #fff); color: var(--SmartThemeBodyColor, #333); border-top: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .25); backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px)); }
@@ -265,3 +264,33 @@ details.tvrm-chats > .tvrm-who { margin-top: 5px; }
 details.tvrm-chats > summary { cursor: pointer; }
 .tvrm-who .tvrm-card-body { display: flex; flex-direction: column; gap: 4px; }
 .tvrm-chat-body { padding: 2px 6px 6px; display: flex; flex-direction: column; gap: 4px; }
+/* ===== 层级（0.8.1）：一层一个样子，字号一层比一层小 =====
+   1 大标题（所有聊天 / 所有世界书）：只有字和一条下划线，不套框
+   2 角色：淡底色块 + 小头像
+   3 聊天：不套框，左边一条细竖线（当前聊天是强调色）
+   4 书：细边框小卡片
+   5 分组：小一号的灰字小标题
+   6 条目：普通的一行 */
+details.tvrm-lv1 { margin-top: 10px; }
+details.tvrm-lv1 > summary { font-size: 1.02em; font-weight: 700; padding: 4px 0 6px; border-bottom: 1px solid var(--tvrm-line); cursor: pointer; }
+.tvrm-who { margin-top: 6px; border-radius: 8px; background: color-mix(in srgb, var(--tvrm-text) 6%, transparent); }
+.tvrm-who > summary { font-size: .98em; font-weight: 600; padding: 6px 10px; }
+.tvrm-who-body { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px 12px; }
+.tvrm-chat { border-left: 2px solid var(--tvrm-line); padding-left: 8px; margin-top: 4px; }
+.tvrm-chat.is-active { border-left-color: var(--tvrm-accent); }
+.tvrm-chat > summary { display: flex; flex-direction: column; align-items: flex-start; gap: 0; cursor: pointer; list-style: none; padding: 3px 0; font-size: .95em; font-weight: 600; }
+.tvrm-chat > summary::-webkit-details-marker { display: none; }
+.tvrm-chat > summary .tvrm-name { white-space: normal; overflow-wrap: anywhere; }
+.tvrm-chat > summary .tvrm-count { font-weight: 400; }
+.tvrm-chat-body { padding: 2px 0 6px; }
+.tvrm-chat-body .tvrm-sub { margin: 6px 0 2px; font-size: .8em; font-weight: 600; color: var(--tvrm-dim); letter-spacing: .04em; }
+.tvrm-chat-body .tvrm-card, .tvrm-all > .tvrm-card { font-size: .92em; border-width: 1px; border-radius: 6px; background: transparent; }
+.tvrm-entry-section > summary { font-size: .82em; color: var(--tvrm-dim); letter-spacing: .04em; padding: 3px 2px; }
+.tvrm-entry { font-size: .93em; }
+/* 秀气的小开关：比原来小一圈、细线 */
+.tvrm-mini-switch { position: relative; flex: 0 0 auto; width: 26px; height: 15px; margin: 0 2px; cursor: pointer; }
+.tvrm-mini-switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.tvrm-mini-switch i { position: absolute; inset: 0; border-radius: 8px; border: 1px solid var(--tvrm-line); background: transparent; transition: background .15s, border-color .15s; }
+.tvrm-mini-switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--tvrm-dim, #999); transition: transform .15s, background .15s; }
+.tvrm-mini-switch input:checked + i { background: color-mix(in srgb, var(--tvrm-accent) 25%, transparent); border-color: var(--tvrm-accent); }
+.tvrm-mini-switch input:checked + i::after { transform: translateX(11px); background: var(--tvrm-accent); }

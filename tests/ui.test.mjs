@@ -181,12 +181,20 @@ test('条目右边只有归类下拉和展开箭头；展开只读显示关键�
     assert.equal(x.document.querySelector('.tvrm-detail'), null);
 });
 
-test('没有「从面板移除」和「恢复原书」，面板里没有开关也没有开/关小标', async () => {
+test('没有「从面板移除」和「恢复原书」；面板里只有当前聊天用着的书才有小开关，点了就改这个聊天', async () => {
     const x = setup(); await x.app.init(); await x.toggle('条目一', false); await x.app.whenIdle();
     const text = x.document.querySelector('.tvrm-panel').textContent;
     assert.doesNotMatch(text, /从面板移除|恢复原书|重新显示/);
-    assert.equal(x.document.querySelector('.tvrm-foot, .tvrm-restore, .tvrm-state, .tvrm-panel input[type=checkbox]'), null);
+    assert.equal(x.document.querySelector('.tvrm-foot, .tvrm-restore'), null);
     assert.ok(x.app.settings().world.books.A.backup); // 首次改书前的备份仍照常留着
+    x.document.querySelector('.tvrm-popup')?.remove();
+    const sw = x.document.querySelector('.tvrm-panel .tvrm-mini-switch input[aria-label="条目一开关"]');
+    assert.ok(sw); assert.equal(sw.checked, false);
+    sw.checked = true; sw.dispatchEvent(new x.document.defaultView.Event('change')); await x.app.whenIdle();
+    assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.A['1'], true);
+    assert.equal(x.books.A.entries[1].disable, false);
+    // 没绑到这个聊天的书（只在「所有世界书」里）没有小开关
+    assert.equal(x.document.querySelector('.tvrm-card[data-book="Other"] .tvrm-mini-switch'), null);
 });
 
 test('「所有世界书」整块默认折叠，里面每本书也默认折叠；点开后才展开', async () => {
@@ -343,7 +351,7 @@ test('跟着聊天走：切聊天写回到一半，别的插件把书改回上�
     }
 });
 
-test('面板分两块：所有聊天（按角色分，当前聊天里分角色/聊天/全局三小段）和所有世界书；面板里没有开关', async () => {
+test('面板分两块：所有聊天（按角色分，当前聊天里分角色/聊天/全局三小段）和所有世界书；全部默认折叠', async () => {
     const x = setup();
     x.ctx.chatMetadata = { world_info: 'Other' };
     await x.app.init();
@@ -352,8 +360,7 @@ test('面板分两块：所有聊天（按角色分，当前聊天里分角色/�
     assert.match(text, /所有世界书（3）/);
     assert.equal(x.document.querySelectorAll('.tvrm-card[data-zone="bound"]').length, 3);
     assert.equal(x.document.querySelectorAll('.tvrm-card[data-zone="all"]').length, 3);
-    assert.equal(x.document.querySelector('.tvrm-panel input[type=checkbox]'), null);
-    assert.ok([...x.document.querySelectorAll('.tvrm-card[data-zone]')].every(c => !c.open)); // 每本书默认折叠（角色和当前聊天那层默认打开）
+    assert.ok([...x.document.querySelectorAll('.tvrm-panel details')].every(c => !c.open)); // 每一层都默认折叠
 });
 
 test('没开聊天：不显示「这个聊天绑定的」，所有世界书照样全列、点开能读到条目并分类，不写原书', async () => {
@@ -386,14 +393,14 @@ test('所有聊天：同一个角色的两个聊天都列出来，各开各的�
     const panel = x.document.querySelector('.tvrm-panel');
     const who = panel.querySelectorAll('.tvrm-chats > .tvrm-who');
     assert.equal(who.length, 1); assert.match(who[0].querySelector('summary').textContent, /2 个聊天/);
-    const chats = [...who[0].querySelectorAll(':scope > .tvrm-card-body > .tvrm-set')];
+    const chats = [...who[0].querySelectorAll(':scope > .tvrm-who-body > .tvrm-chat')];
     assert.equal(chats.length, 2);
     const here = chats.find(c => /second（当前）/.test(c.querySelector('summary').textContent));
     const other = chats.find(c => /same-id/.test(c.querySelector('summary').textContent) && !/当前/.test(c.querySelector('summary').textContent));
     assert.ok(here && other);
     assert.ok(here.querySelector('.tvrm-card[data-zone="bound"]'), '当前聊天里是能改的书卡片');
     assert.equal(other.querySelector('.tvrm-card[data-zone]'), null, '别的聊天只看');
-    const bookA = [...other.querySelectorAll('.tvrm-set')].find(b => /^A/.test(b.querySelector('summary').textContent));
+    const bookA = [...other.querySelectorAll('.tvrm-book-ro')].find(b => /^A/.test(b.querySelector('summary').textContent));
     bookA.open = true; bookA.dispatchEvent(new x.document.defaultView.Event('toggle')); await x.tick();
     const line = [...bookA.querySelectorAll('li')].find(li => /条目一/.test(li.textContent));
     assert.ok(line.classList.contains('is-off'), '那个聊天里条目一是关的');

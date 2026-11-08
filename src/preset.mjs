@@ -172,7 +172,7 @@ export function createPresetKeeper(host) {
         container.append(renderChatGroups({ h, c: ctx(), keys, hereKey: here, open, prefix: 'preset', title: '预设格',
             renderChat: key => {
                 const chat = chats[key];
-                const d = h('details', { class: 'tvrm-card tvrm-page', open: open.has(key) }, h('summary', null,
+                const d = h('details', { class: 'tvrm-chat tvrm-page' + (key === here ? ' is-active' : ''), open: open.has(key) }, h('summary', null,
                     h('span', { class: 'tvrm-name' }, chatOf(key) + (key === here ? '（当前）' : '')),
                     h('small', { class: 'tvrm-count' }, `${chat.preset || '未知预设'} · 存档${chat.saves.length}套`)));
                 d.addEventListener('toggle', () => { if (d.open) open.add(key); else open.delete(key); });
