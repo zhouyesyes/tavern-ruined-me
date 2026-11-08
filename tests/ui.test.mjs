@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-const { JSDOM } = createRequire(import.meta.url)('jsdom');
+const { JSDOM } = createRequire('/tmp/claude-0/-home-user/491fd2d7-bc6d-5287-8965-db6383f3255b/scratchpad/jsd/')('jsdom');
 import { createApp } from '../src/ui.mjs';
 const copy = x => JSON.parse(JSON.stringify(x));
 function setup() {
@@ -34,19 +34,22 @@ function setup() {
     return { app, ctx, host, binding, books, saved, popups, metadataSaves, document, run, tick, toggle, toasts };
 }
 
-test('仅当前角色主书和全局书；面板默认折叠；切换聊天不弹窗，新开聊天才弹一次', async () => {
+test('仅当前角色主书和全局书；面板默认折叠；任何时候都不自动弹窗', async () => {
     const { app, document, popups, tick } = setup();
     await app.init(); await app.onChatChanged();
     assert.equal(popups.length, 0);
     const cards = [...document.querySelectorAll('.tvrm-card')];
     assert.equal(cards.length, 2);
     assert.ok(cards.every(c => !c.open && !c.textContent.includes('Other')));
-    assert.match(document.body.textContent, /未分类/);
+    assert.match(cards[0].querySelector('summary').textContent, /分类0 · 开1\/2/);
     assert.equal(document.querySelector('.tvrm-group-settings'), null);
+    assert.equal(document.querySelector('[aria-label="管理其他世界书"]'), null);
     await app.onChatCreated(); await tick();
+    assert.equal(popups.length, 0);
+    // 面板里「这个聊天开哪些」按钮还在，点了才有弹窗
+    [...document.querySelectorAll('.tvrm-actions button')][0].click(); await tick();
     assert.equal(popups.length, 1);
     assert.match(popups[0].textContent, /条目一/);
-    assert.equal(popups[0].querySelector('.tvrm-master'), null);
 });
 
 test('未分组开关立即保存元数据，首次修改备份；切回各聊天恢复各自状态', async () => {
@@ -82,15 +85,29 @@ test('同名聊天的角色切换也隔离；读书过程中换窗不保存旧�
     assert.notEqual(previous, x.ctx.chatMetadata);
 });
 
-test('外部修改优先：切回旧聊天不会用旧快照覆盖开场白的原书开关', async () => {
+test('切回旧聊天：以这个聊天自己存的选择为准，别的插件动过原书也不冲掉', async () => {
     const { app, ctx, books, toggle } = setup(); await app.init();
     const old = ctx.chatMetadata;
     await toggle('条目一', false); await app.whenIdle();
     ctx.chatMetadata = {}; ctx.chatId = 'second'; await app.onChatChanged();
-    books.A.entries[1].disable = false; // 其它扩展在换开场白时改了原书
+    books.A.entries[1].disable = false; // 同时开着的别的插件把原书改回去了
     ctx.chatMetadata = old; ctx.chatId = 'same-id'; await app.onChatChanged();
-    assert.equal(books.A.entries[1].disable, false);
-    assert.equal(old.tavern_ruined_me.slots.world.entries.A['1'], true);
+    assert.equal(books.A.entries[1].disable, true);
+    assert.equal(old.tavern_ruined_me.slots.world.entries.A['1'], false);
+});
+
+test('聊天里手拨原生开关 / 脚本存书改了开关：记进当前聊天，下次进来恢复', async () => {
+    const { app, ctx, books, run } = setup(); await app.init();
+    const first = ctx.chatMetadata;
+    books.A.entries[2].disable = false; // 在原生世界书页面手动打开条目二
+    app.onWorldChanged(); await run();
+    assert.equal(first.tavern_ruined_me.slots.world.entries.A['2'], true);
+    ctx.chatMetadata = {}; ctx.chatId = 'second'; await app.onChatChanged();
+    assert.equal(books.A.entries[2].disable, false); // 新聊天：沿用现状
+    books.A.entries[2].disable = true; app.onWorldChanged(); await run(); // 开场白脚本关掉
+    assert.equal(ctx.chatMetadata.tavern_ruined_me.slots.world.entries.A['2'], false);
+    ctx.chatMetadata = first; ctx.chatId = 'same-id'; await app.onChatChanged();
+    assert.equal(books.A.entries[2].disable, false);
 });
 
 test('全局绑定/聊天世界书变化先取当前实际状态，不回放旧选择；不显示其它角色书', async () => {
@@ -103,12 +120,12 @@ test('全局绑定/聊天世界书变化先取当前实际状态，不回放旧�
     assert.equal(x.document.querySelectorAll('.tvrm-card').length, 1);
 });
 
-test('生成前发现外部条目变化会采用新状态；新条目和未分组同样参与', async () => {
+test('生成前只把本聊天的选择套到条目副本，不把副本里别人的临时改动记进聊天', async () => {
     const x = setup(); await x.app.init(); await x.toggle('条目一', false); await x.app.whenIdle();
     const payload = { characterLore: [{ world: 'A', uid: 1, disable: false }, { world: 'Other', uid: 4, disable: true }] };
     await x.app.onEntriesLoaded(payload);
-    assert.deepEqual(payload.characterLore.map(e => e.disable), [false, true]);
-    assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.A['1'], true);
+    assert.deepEqual(payload.characterLore.map(e => e.disable), [true, true]);
+    assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.A['1'], false);
 });
 
 test('分组是一排小标签；名称有保存反馈；删除需确认，条目回未分类', async () => {
@@ -158,14 +175,20 @@ test('恢复原书在卡片最底下一行小字，需确认且不会被切聊�
     assert.equal(x.app.settings().world.books.A.restored, true);
 });
 
-test('编辑只改名称关键词正文；并发内容更改不覆盖', async () => {
+test('条目右边只有归类下拉和展开箭头；展开只读显示关键词和正文，不能改；状态一眼可见', async () => {
     const x = setup(); await x.app.init();
-    x.host.popup = async el => { el.querySelector('textarea').value = '新正文'; return true; };
-    x.document.querySelector('.tvrm-edit').click(); await x.tick();
-    assert.equal(x.books.A.entries[1].content, '新正文'); assert.equal(x.books.A.entries[1].disable, false);
-    x.host.popup = async el => { el.querySelector('textarea').value = '冲突内容'; x.books.A.entries[1].content = '外部内容'; return true; };
-    x.document.querySelector('.tvrm-edit').click(); await x.tick();
-    assert.equal(x.books.A.entries[1].content, '外部内容');
+    assert.equal(x.document.querySelector('.tvrm-edit'), null);
+    assert.ok(![...x.document.querySelectorAll('button')].some(b => b.textContent === '编辑'));
+    const states = [...x.document.querySelectorAll('.tvrm-card')[0].querySelectorAll('.tvrm-state')].map(e => e.textContent);
+    assert.deepEqual(states, ['开', '关']);
+    assert.equal(x.document.querySelector('.tvrm-detail'), null);
+    x.document.querySelector('[aria-label="条目一展开内容"]').click();
+    const d = x.document.querySelector('.tvrm-detail');
+    assert.match(d.textContent, /关键词a/); assert.match(d.textContent, /正文/);
+    assert.equal(d.querySelector('input, textarea'), null);
+    x.app.renderPanel(); assert.ok(x.document.querySelector('.tvrm-detail')); // 重画后仍展开
+    x.document.querySelector('[aria-label="条目一展开内容"]').click();
+    assert.equal(x.document.querySelector('.tvrm-detail'), null);
 });
 
 test('从面板移除需确认，保留备份并可重新显示', async () => {
@@ -210,43 +233,36 @@ test('原生页面重建后开关同步；空世界书选择不能误认作第�
     assert.ok(x.document.querySelector('[name=entryKillSwitch]').classList.contains('fa-toggle-on'));
 });
 
-async function selectBook(x, name) {
-    const select = x.document.querySelector('[aria-label="管理其他世界书"]');
-    select.value = name; select.dispatchEvent(new x.document.defaultView.Event('change'));
-    await x.app.whenIdle();
-}
-
-test('旧配置原组原归属原备份保留；旧的整本开关书改按条目分类并接过备份；管理其他书不写原书或聊天', async () => {
+test('旧配置原组原归属原备份保留；旧的整本开关书改按条目分类并接过备份；分过类没绑的书直接列出，不写原书或聊天', async () => {
     const x = setup();
     const backup = { at: 123, data: copy(x.books.Other) };
     const legacy = { groups: [{ id: 'old', name: '原来的组' }], assign: { 4: 'old' }, backup, custom: '保留' };
     x.ctx.extensionSettings.tavern_ruined_me = { world: { books: { Other: copy(legacy), A: { groups: [], assign: {}, mode: 'whole' } }, wholeBooks: ['G'], wholeMeta: { G: { backup: { at: 456, data: copy(x.books.G) } } } } };
     await x.app.init();
-    const chat = copy(x.ctx.chatMetadata);
-    await selectBook(x, 'Other');
-    const card = [...x.document.querySelectorAll('.tvrm-card')].at(-1);
-    assert.match(card.textContent, /原来的组/); assert.match(card.textContent, /分类 1 · 未分类 0/);
-    assert.deepEqual(x.ctx.chatMetadata, chat);
+    const cards = [...x.document.querySelectorAll('.tvrm-card')];
+    assert.equal(cards.length, 3);
+    const card = cards.at(-1);
+    assert.match(card.querySelector('summary').textContent, /Other/); assert.match(card.querySelector('summary').textContent, /未绑/);
+    assert.match(card.textContent, /原来的组/); assert.match(card.querySelector('summary').textContent, /分类1/);
     assert.equal(x.saved.length, 0);
     const cfg = x.app.settings().world.books.Other;
     assert.deepEqual(cfg.groups, legacy.groups); assert.deepEqual(cfg.assign, legacy.assign);
     assert.deepEqual(cfg.backup, backup); assert.equal(cfg.custom, '保留');
     assert.equal(x.app.settings().world.books.G.backup.at, 456);
     assert.equal(x.app.settings().world.wholeMeta.G.backup.at, 456);
-    // 带 mode:'whole' 的旧书也照样出现分类
-    assert.ok([...x.document.querySelectorAll('.tvrm-card')].every(c => c.querySelector('.tvrm-chips')));
+    assert.ok(cards.every(c => c.querySelector('.tvrm-chips')));
+    assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.Other, undefined);
 });
 
-test('未绑定书可归类编辑，但切聊天和生成不自动接管；弹窗只含绑定的书', async () => {
-    const x = setup(); await x.app.init();
-    await selectBook(x, 'Other');
+test('未分类也没绑的书不出现；分过类没绑的书可归类，但切聊天和生成不自动接管；弹窗只含绑定的书', async () => {
+    const x = setup();
+    x.ctx.extensionSettings.tavern_ruined_me = { world: { books: { Other: { groups: [{ id: 'old', name: '组' }], assign: {} } } } };
+    await x.app.init();
+    assert.equal(x.document.querySelectorAll('.tvrm-card').length, 3);
     const card = () => [...x.document.querySelectorAll('.tvrm-card')].at(-1);
     const sel = card().querySelector('[aria-label="条目 #4归组"]'); sel.value = 'off'; sel.dispatchEvent(new x.document.defaultView.Event('change')); await x.app.whenIdle();
     assert.equal(x.books.Other.entries[4].disable, true);
     assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.Other, undefined);
-    x.host.popup = async el => { el.querySelector('textarea').value = '手动编辑'; return true; };
-    card().querySelector('.tvrm-edit').click(); await x.tick();
-    assert.equal(x.books.Other.entries[4].content, '手动编辑');
     x.books.Other.entries[4].disable = false;
     x.ctx.chatId = 'next'; x.ctx.chatMetadata = {}; await x.app.onChatChanged();
     assert.equal(x.books.Other.entries[4].disable, false);

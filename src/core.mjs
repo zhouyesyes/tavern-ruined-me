@@ -230,8 +230,11 @@ export function boundBookNames(context, binding, available) {
     return available.filter(n => names.has(n));
 }
 
-// physical 记录插件最后核对的原书开关，外部更改只合入当前聊天。
-export function reconcileBook(settings, chat, name, data, reset = false) {
+// physical 记录插件最后核对的原书开关。
+// restore=true（切进聊天时）：以这个聊天自己存的选择为准，原书和上次写入对不上也不当成「外部修改」，
+//   否则别的插件（LoreGovernor 等）动过书，这个聊天存的选择就被冲掉了。
+// restore=false（聊天里原书被改、手拨开关、开场白/脚本开关）：和上次写入对比，变了的记进当前聊天。
+export function reconcileBook(settings, chat, name, data, restore = false) {
     chat.entries ??= {};
     chat.books ??= {};
     chat.groups ??= {};
@@ -244,7 +247,8 @@ export function reconcileBook(settings, chat, name, data, reset = false) {
         const uid = String(entry.uid);
         const on = entry.disable !== true;
         observed[uid] = on;
-        if (reset || !previous || (uid in previous && previous[uid] !== on)) {
+        const changed = !restore && (!previous || (uid in previous && previous[uid] !== on));
+        if (changed) {
             chat.entries[name][uid] = on;
             external = true;
         } else if (!(uid in chat.entries[name])) {
@@ -256,4 +260,11 @@ export function reconcileBook(settings, chat, name, data, reset = false) {
     for (const uid of Object.keys(chat.entries[name])) if (!(uid in observed)) delete chat.entries[name][uid];
     settings.world.physical[name] = observed;
     return external;
+}
+
+// 这本书算不算「她分过类」：有分组，或者有条目被归过类（旧版整本开关的书也算）
+export function isClassified(settings, name) {
+    const b = settings.world.books[name];
+    if (b) return b.groups.length > 0 || Object.keys(b.assign).length > 0;
+    return settings.world.wholeBooks.includes(name);
 }
