@@ -545,7 +545,7 @@ export function createApp(host) {
                 list.replaceChildren(...Object.entries(entries).filter(([uid]) => !cached || byUid.has(uid)).map(([uid, v]) => {
                     const entry = byUid.get(uid); const ekey = 'ro|' + key + '|' + name + '|' + uid;
                     const li = h('li', { class: 'tvrm-ro-entry' + (v ? '' : ' is-off') });
-                    const dot = h('button', { type: 'button', class: 'tvrm-state tvrm-dot ' + (v ? 'is-on' : 'is-off'), title: v ? '开（点一下关掉）' : '关（点一下打开）', 'aria-label': (entry ? entryLabel(entry) : '条目 ' + uid) + (v ? '开' : '关') });
+                    const dot = h('button', { type: 'button', class: 'tvrm-dot ' + (v ? 'is-on' : 'is-off'), title: v ? '开（点一下关掉）' : '关（点一下打开）', 'aria-label': (entry ? entryLabel(entry) : '条目 ' + uid) + (v ? '开' : '关') });
                     // 改别的聊天：那个聊天的配置存在它自己的聊天文件里，现在拿不到，先记成「待办」，下次进那个聊天时自动用上
                     dot.addEventListener('click', () => {
                         const rec = settings().world.index[key]; if (!rec) return;
