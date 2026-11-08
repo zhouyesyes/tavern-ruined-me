@@ -151,3 +151,35 @@
 .tvrm-pop-group { margin: 2px 0; }
 .tvrm-pop-group > summary { cursor: pointer; font-size: 11px; color: var(--tvrm-dim); padding: 3px 0; }
 .tvrm-pop-group .tvrm-row { padding: 5px 2px; font-size: 13px; }
+
+/* ---- 0.4.0：一本一本列出来；条目一行放得下（390 宽也不折行），点箭头看内容 ---- */
+.tvrm-panel, .tvrm-popup { font-size: 11px; }
+.tvrm-panel .menu_button, .tvrm-popup .menu_button { font-size: 10.5px; padding: 2px 6px; }
+.tvrm-card > summary { padding: 6px 8px; gap: 6px; align-items: center; }
+.tvrm-card > summary .tvrm-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.tvrm-card > summary .tvrm-count { font-size: 10px; white-space: nowrap; }
+.tvrm-card-body { padding: 4px 8px 6px; gap: 4px; }
+.tvrm-chip { font-size: 10.5px; line-height: 18px; padding: 0 8px; }
+.tvrm-entry-section { margin-top: 2px; }
+.tvrm-entry-section > summary { display: flex; justify-content: space-between; gap: 6px; cursor: pointer; list-style: none;
+    padding: 3px 0; font-size: 10.5px; color: var(--tvrm-dim); font-weight: 600; }
+.tvrm-entry-section > summary::-webkit-details-marker { display: none; }
+.tvrm-entry-section > summary::before { content: '▾'; margin-right: 4px; }
+.tvrm-entry-section:not([open]) > summary::before { content: '▸'; }
+.tvrm-entry-section > summary span { flex: 1; min-width: 0; }
+.tvrm-entry-wrap { border-bottom: 1px solid color-mix(in srgb, var(--tvrm-line) 50%, transparent); }
+.tvrm-entry-wrap .tvrm-entry { border: 0; padding: 3px 0; gap: 4px; flex-wrap: nowrap; }
+.tvrm-entry .tvrm-name { flex: 1 1 0; min-width: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.tvrm-entry.is-off .tvrm-name { opacity: .55; }
+.tvrm-entry .tvrm-bucket { flex: 0 0 auto; width: 70px; min-width: 0; max-width: 70px; font-size: 10.5px; height: 22px; padding: 0 2px; margin: 0; }
+.tvrm-state { flex: 0 0 auto; width: 16px; line-height: 16px; text-align: center; font-size: 10px; border-radius: 4px;
+    border: 1px solid var(--tvrm-line); color: var(--tvrm-dim); }
+.tvrm-state.is-on { color: var(--tvrm-text); border-color: var(--tvrm-accent); background: color-mix(in srgb, var(--tvrm-accent) 22%, transparent); font-weight: 700; }
+.tvrm-expand { all: unset; box-sizing: border-box; flex: 0 0 auto; width: 22px; height: 22px; line-height: 22px; text-align: center; cursor: pointer;
+    color: var(--tvrm-dim); transition: transform .15s; }
+.tvrm-expand.is-open { transform: rotate(90deg); color: var(--tvrm-text); }
+.tvrm-detail { margin: 0 0 5px 20px; padding: 5px 7px; border-radius: 6px; background: color-mix(in srgb, var(--tvrm-text) 6%, transparent);
+    font-size: 11px; display: flex; flex-direction: column; gap: 3px; }
+.tvrm-detail-line b { margin-right: 6px; color: var(--tvrm-dim); font-weight: 600; }
+.tvrm-detail-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 220px; overflow-y: auto; user-select: text; }
+.tvrm-pop-group .tvrm-row { font-size: 12px; }
