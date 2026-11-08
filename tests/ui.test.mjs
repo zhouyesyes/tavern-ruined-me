@@ -19,37 +19,48 @@ function setup() {
     const binding = { global: ['G'], charLore: [{ name: 'other', extraBooks: ['Other'] }] };
     const host = { document, getContext: () => ctx, bindings: () => binding, worldNames: () => Object.keys(books),
         loadWorldInfo: async n => copy(books[n]), saveWorldInfo: async (n, data) => { books[n] = copy(data); saved.push(n); },
-        popup: async (el, ok) => { popups.push(el); return true; }, toast: (kind, message) => toasts.push([kind, message]),
+        popup: async (el, ok) => { if (ok) return true; popups.push(el); document.body.append(el); return new Promise(() => {}); }, toast: (kind, message) => toasts.push([kind, message]),
         timers: { setTimeout: f => { timers.push(f); return timers.length; }, clearTimeout: id => { timers[id - 1] = null; } } };
     const app = createApp(host);
     const run = async () => { for (const f of timers.splice(0)) if (f) await f(); await app.whenIdle(); };
     const tick = async () => { await new Promise(r => setTimeout(r, 0)); await app.whenIdle(); };
-    const toggle = (label, checked) => { const input = [...document.querySelectorAll('input[type=checkbox]')].find(e => e.getAttribute('aria-label') === label); assert.ok(input, label); input.checked = checked; input.dispatchEvent(new dom.window.Event('change')); };
+    // 开关只在「这个聊天开哪些」弹窗里；没打开就先点按钮打开
+    const find = label => [...document.querySelectorAll('.tvrm-popup input[type=checkbox]')].find(e => e.getAttribute('aria-label') === label);
+    const toggle = async (label, checked) => {
+        let input = find(label);
+        if (!input) { [...document.querySelectorAll('.tvrm-actions button')][0].click(); await new Promise(r => setTimeout(r, 0)); await app.whenIdle(); input = find(label); }
+        assert.ok(input, label); input.checked = checked; input.dispatchEvent(new dom.window.Event('change'));
+    };
     return { app, ctx, host, binding, books, saved, popups, metadataSaves, document, run, tick, toggle, toasts };
 }
 
-test('仅当前角色主书和全局书；新建、切换均不弹窗', async () => {
-    const { app, document, popups } = setup();
-    await app.init(); await app.onChatCreated(); await app.onChatChanged();
+test('仅当前角色主书和全局书；面板默认折叠；切换聊天不弹窗，新开聊天才弹一次', async () => {
+    const { app, document, popups, tick } = setup();
+    await app.init(); await app.onChatChanged();
     assert.equal(popups.length, 0);
-    assert.equal(document.querySelectorAll('.tvrm-card').length, 2);
-    assert.match(document.body.textContent, /未分组/);
-    assert.ok([...document.querySelectorAll('.tvrm-card')].every(e => !e.textContent.includes('Other')));
-    assert.equal(document.querySelector('.tvrm-group-settings').open, false);
+    const cards = [...document.querySelectorAll('.tvrm-card')];
+    assert.equal(cards.length, 2);
+    assert.ok(cards.every(c => !c.open && !c.textContent.includes('Other')));
+    assert.match(document.body.textContent, /未分类/);
+    assert.equal(document.querySelector('.tvrm-group-settings'), null);
+    await app.onChatCreated(); await tick();
+    assert.equal(popups.length, 1);
+    assert.match(popups[0].textContent, /条目一/);
+    assert.equal(popups[0].querySelector('.tvrm-master'), null);
 });
 
 test('未分组开关立即保存元数据，首次修改备份；切回各聊天恢复各自状态', async () => {
     const { app, ctx, books, saved, metadataSaves, toggle } = setup();
     await app.init();
     const first = ctx.chatMetadata;
-    toggle('条目一', false); await app.whenIdle();
+    await toggle('条目一', false); await app.whenIdle();
     assert.equal(books.A.entries[1].disable, true);
     assert.equal(first.tavern_ruined_me.slots.world.entries.A['1'], false);
     assert.ok(metadataSaves.includes(first));
     assert.equal(app.settings().world.books.A.backup.data.entries[1].disable, false);
     ctx.chatMetadata = {}; ctx.chatId = 'second'; await app.onChatChanged();
     const second = ctx.chatMetadata;
-    toggle('条目一', true); await app.whenIdle();
+    await toggle('条目一', true); await app.whenIdle();
     assert.equal(books.A.entries[1].disable, false);
     ctx.chatMetadata = first; ctx.chatId = 'same-id'; await app.onChatChanged();
     assert.equal(books.A.entries[1].disable, true);
@@ -74,7 +85,7 @@ test('同名聊天的角色切换也隔离；读书过程中换窗不保存旧�
 test('外部修改优先：切回旧聊天不会用旧快照覆盖开场白的原书开关', async () => {
     const { app, ctx, books, toggle } = setup(); await app.init();
     const old = ctx.chatMetadata;
-    toggle('条目一', false); await app.whenIdle();
+    await toggle('条目一', false); await app.whenIdle();
     ctx.chatMetadata = {}; ctx.chatId = 'second'; await app.onChatChanged();
     books.A.entries[1].disable = false; // 其它扩展在换开场白时改了原书
     ctx.chatMetadata = old; ctx.chatId = 'same-id'; await app.onChatChanged();
@@ -83,7 +94,7 @@ test('外部修改优先：切回旧聊天不会用旧快照覆盖开场白的�
 });
 
 test('全局绑定/聊天世界书变化先取当前实际状态，不回放旧选择；不显示其它角色书', async () => {
-    const x = setup(); await x.app.init(); x.toggle('条目一', false); await x.app.whenIdle();
+    const x = setup(); await x.app.init(); await x.toggle('条目一', false); await x.app.whenIdle();
     x.books.A.entries[1].disable = false;
     x.ctx.chatMetadata.world_info = 'different-opening';
     await x.app.onWorldChanged();
@@ -93,43 +104,61 @@ test('全局绑定/聊天世界书变化先取当前实际状态，不回放旧�
 });
 
 test('生成前发现外部条目变化会采用新状态；新条目和未分组同样参与', async () => {
-    const x = setup(); await x.app.init(); x.toggle('条目一', false); await x.app.whenIdle();
+    const x = setup(); await x.app.init(); await x.toggle('条目一', false); await x.app.whenIdle();
     const payload = { characterLore: [{ world: 'A', uid: 1, disable: false }, { world: 'Other', uid: 4, disable: true }] };
     await x.app.onEntriesLoaded(payload);
     assert.deepEqual(payload.characterLore.map(e => e.disable), [false, true]);
     assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.A['1'], true);
 });
 
-test('分组名称有保存按钮和反馈；删除取消不生效，确认后回未分组', async () => {
+test('分组是一排小标签；名称有保存反馈；删除需确认，条目回未分类', async () => {
     const x = setup(); await x.app.init();
     const cfg = x.app.settings().world.books.A;
     cfg.groups.push({ id: 'g', name: '旧组', desc: '不该出现的说明' }); cfg.assign['1'] = 'g'; x.app.renderPanel();
+    assert.equal(x.document.querySelector('[aria-label="分组名称"]'), null);
+    const chip = () => [...x.document.querySelectorAll('.tvrm-chip')].find(e => e.textContent.startsWith('旧组') || e.textContent.startsWith('新组'));
+    chip().click();
     const input = x.document.querySelector('[aria-label="分组名称"]'); input.value = '新组';
     assert.equal(cfg.groups[0].name, '旧组');
     [...x.document.querySelectorAll('button')].find(e => e.textContent === '保存').click();
     assert.equal(cfg.groups[0].name, '新组'); assert.match(x.document.body.textContent, /已保存/);
     assert.doesNotMatch(x.document.body.textContent, /不该出现的说明/);
+    const del = () => [...x.document.querySelectorAll('button')].find(e => e.textContent === '删除分组');
     x.host.popup = async () => false;
-    x.document.querySelector('.tvrm-group-edit .tvrm-delete').click(); await x.tick(); assert.equal(cfg.groups.length, 1);
+    del().click(); await x.tick(); assert.equal(cfg.groups.length, 1);
     x.host.popup = async () => true;
-    x.document.querySelector('.tvrm-group-edit .tvrm-delete').click(); await x.tick(); assert.equal(cfg.groups.length, 0);
+    del().click(); await x.tick(); assert.equal(cfg.groups.length, 0);
     assert.equal(cfg.assign['1'], undefined);
-    assert.match(x.document.body.textContent, /未分组（2）/);
+    x.document.querySelector('.tvrm-chip').click();
+    assert.match(x.document.body.textContent, /未分类（2）/);
 });
 
-test('总开关保留逐条选择；恢复原书需确认且不会被切聊天覆盖', async () => {
+test('弹窗只有分了类和没分类的条目，没有分组设置和整本开关；新建的组选得到', async () => {
     const x = setup(); await x.app.init();
-    x.toggle('A', false); await x.app.whenIdle(); assert.equal(x.books.A.entries[1].disable, true);
-    x.toggle('A', true); await x.app.whenIdle();
-    assert.deepEqual(Object.values(x.books.A.entries).map(e => e.disable), [false, true]);
-    x.toggle('条目一', false); await x.app.whenIdle();
-    x.document.querySelector('.tvrm-restore').click(); await x.tick();
+    const cfg = x.app.settings().world.books.A;
+    [...x.document.querySelectorAll('.tvrm-chip-add')][0].click();
+    assert.equal(cfg.groups.length, 1);
+    x.document.querySelector('.tvrm-chip').click();
+    const sel = x.document.querySelector('[aria-label="条目一归组"]'); sel.value = cfg.groups[0].id; sel.dispatchEvent(new x.document.defaultView.Event('change'));
+    await x.toggle('条目一', true);
+    const pop = x.document.querySelector('.tvrm-popup');
+    assert.match(pop.textContent, /新分组 1（1）/); assert.match(pop.textContent, /未分类（1）/);
+    assert.equal(pop.querySelector('.tvrm-master, .tvrm-group-settings, .tvrm-restore, .tvrm-chip'), null);
+    await x.toggle('条目一', false); await x.app.whenIdle();
+    assert.equal(x.books.A.entries[1].disable, true);
+});
+
+test('恢复原书在卡片最底下一行小字，需确认且不会被切聊天覆盖', async () => {
+    const x = setup(); await x.app.init();
+    await x.toggle('条目一', false); await x.app.whenIdle();
+    assert.equal(x.document.querySelector('.tvrm-card .tvrm-foot .tvrm-restore').textContent, '恢复原书');
+    x.document.querySelector('.tvrm-restore:not(.tvrm-delete)').click(); await x.tick();
     assert.equal(x.books.A.entries[1].disable, false);
     await x.app.onChatChanged(); assert.equal(x.books.A.entries[1].disable, false);
     assert.equal(x.app.settings().world.books.A.restored, true);
 });
 
-test('未分组编辑只改名称关键词正文；并发内容更改不覆盖', async () => {
+test('编辑只改名称关键词正文；并发内容更改不覆盖', async () => {
     const x = setup(); await x.app.init();
     x.host.popup = async el => { el.querySelector('textarea').value = '新正文'; return true; };
     x.document.querySelector('.tvrm-edit').click(); await x.tick();
@@ -139,9 +168,9 @@ test('未分组编辑只改名称关键词正文；并发内容更改不覆盖',
     assert.equal(x.books.A.entries[1].content, '外部内容');
 });
 
-test('移除书需确认，保留备份并可重新显示', async () => {
-    const x = setup(); await x.app.init(); x.toggle('条目一', false); await x.app.whenIdle();
-    x.document.querySelector('.tvrm-book-header .tvrm-delete').click(); await x.tick();
+test('从面板移除需确认，保留备份并可重新显示', async () => {
+    const x = setup(); await x.app.init(); await x.toggle('条目一', false); await x.app.whenIdle();
+    x.document.querySelector('.tvrm-foot .tvrm-delete').click(); await x.tick();
     assert.equal(x.document.querySelectorAll('.tvrm-card').length, 1);
     assert.ok(x.app.settings().world.books.A.backup);
     const select = x.document.querySelector('[aria-label="重新显示世界书"]'); select.value = 'A'; select.dispatchEvent(new x.document.defaultView.Event('change')); await x.tick();
@@ -151,19 +180,20 @@ test('移除书需确认，保留备份并可重新显示', async () => {
 test('保存请求中快速连续拨动和换窗，队列最终恢复目标聊天，不串写元数据', async () => {
     const x = setup(); await x.app.init();
     const first = x.ctx.chatMetadata;
+    await x.toggle('条目一', true); await x.app.whenIdle();
     let release; const originalSave = x.host.saveWorldInfo;
     let held = true;
     x.host.saveWorldInfo = async (n, data) => {
         if (held) { held = false; await new Promise(r => { release = r; }); }
         return originalSave(n, data);
     };
-    x.toggle('条目一', false);
+    await x.toggle('条目一', false);
     await new Promise(r => setTimeout(r, 0));
-    x.toggle('条目一', true); x.toggle('条目二', true);
+    await x.toggle('条目一', true); await x.toggle('条目二', true);
     release(); await x.app.whenIdle();
     assert.deepEqual(Object.values(x.books.A.entries).map(e => e.disable), [false, false]);
     assert.equal(first.tavern_ruined_me.slots.world.entries.A['1'], true);
-    held = true; x.toggle('条目一', false); await new Promise(r => setTimeout(r, 0));
+    held = true; await x.toggle('条目一', false); await new Promise(r => setTimeout(r, 0));
     x.ctx.chatId = 'new'; x.ctx.chatMetadata = {};
     const next = x.app.onChatChanged(); release(); await next;
     assert.notEqual(x.ctx.chatMetadata, first);
@@ -181,55 +211,50 @@ test('原生页面重建后开关同步；空世界书选择不能误认作第�
 });
 
 async function selectBook(x, name) {
-    const select = x.document.querySelector('[aria-label="世界书下拉选择"]');
+    const select = x.document.querySelector('[aria-label="管理其他世界书"]');
     select.value = name; select.dispatchEvent(new x.document.defaultView.Event('change'));
     await x.app.whenIdle();
 }
 
-test('旧配置原组原归属原备份保留；全部书可浏览，浏览不写原书或聊天', async () => {
+test('旧配置原组原归属原备份保留；旧的整本开关书改按条目分类并接过备份；管理其他书不写原书或聊天', async () => {
     const x = setup();
     const backup = { at: 123, data: copy(x.books.Other) };
     const legacy = { groups: [{ id: 'old', name: '原来的组' }], assign: { 4: 'old' }, backup, custom: '保留' };
-    x.ctx.extensionSettings.tavern_ruined_me = { world: { books: { Other: copy(legacy) }, wholeBooks: ['G'], wholeMeta: { G: { backup: { at: 456, data: copy(x.books.G) } } }, hidden: ['Other'] } };
+    x.ctx.extensionSettings.tavern_ruined_me = { world: { books: { Other: copy(legacy), A: { groups: [], assign: {}, mode: 'whole' } }, wholeBooks: ['G'], wholeMeta: { G: { backup: { at: 456, data: copy(x.books.G) } } } } };
     await x.app.init();
     const chat = copy(x.ctx.chatMetadata);
     await selectBook(x, 'Other');
-    assert.match(x.document.querySelector('.tvrm-card').textContent, /原来的组（1）/);
-    assert.match(x.document.body.textContent, /未分组/);
+    const card = [...x.document.querySelectorAll('.tvrm-card')].at(-1);
+    assert.match(card.textContent, /原来的组/); assert.match(card.textContent, /分类 1 · 未分类 0/);
     assert.deepEqual(x.ctx.chatMetadata, chat);
     assert.equal(x.saved.length, 0);
     const cfg = x.app.settings().world.books.Other;
     assert.deepEqual(cfg.groups, legacy.groups); assert.deepEqual(cfg.assign, legacy.assign);
     assert.deepEqual(cfg.backup, backup); assert.equal(cfg.custom, '保留');
-    const mode = x.document.querySelector('[aria-label="世界书管理方式"]');
-    mode.value = 'whole'; mode.dispatchEvent(new x.document.defaultView.Event('change'));
-    assert.equal(x.document.querySelector('.tvrm-entries'), null);
-    const back = x.document.querySelector('[aria-label="世界书管理方式"]'); back.value = 'entries'; back.dispatchEvent(new x.document.defaultView.Event('change'));
-    assert.match(x.document.body.textContent, /原来的组（1）/);
-    assert.deepEqual(cfg.backup, backup); assert.deepEqual(cfg.assign, legacy.assign);
-    await selectBook(x, 'G'); assert.equal(x.document.querySelector('.tvrm-entries'), null);
+    assert.equal(x.app.settings().world.books.G.backup.at, 456);
     assert.equal(x.app.settings().world.wholeMeta.G.backup.at, 456);
+    // 带 mode:'whole' 的旧书也照样出现分类
+    assert.ok([...x.document.querySelectorAll('.tvrm-card')].every(c => c.querySelector('.tvrm-chips')));
 });
 
-test('未绑定书可手动开关编辑，但切聊天和生成不自动接管；手动入口只含绑定候选', async () => {
+test('未绑定书可归类编辑，但切聊天和生成不自动接管；弹窗只含绑定的书', async () => {
     const x = setup(); await x.app.init();
     await selectBook(x, 'Other');
-    x.toggle('条目 #4', false); await x.app.whenIdle();
+    const card = () => [...x.document.querySelectorAll('.tvrm-card')].at(-1);
+    const sel = card().querySelector('[aria-label="条目 #4归组"]'); sel.value = 'off'; sel.dispatchEvent(new x.document.defaultView.Event('change')); await x.app.whenIdle();
     assert.equal(x.books.Other.entries[4].disable, true);
     assert.equal(x.ctx.chatMetadata.tavern_ruined_me.slots.world.entries.Other, undefined);
     x.host.popup = async el => { el.querySelector('textarea').value = '手动编辑'; return true; };
-    x.document.querySelector('.tvrm-edit').click(); await x.tick();
+    card().querySelector('.tvrm-edit').click(); await x.tick();
     assert.equal(x.books.Other.entries[4].content, '手动编辑');
     x.books.Other.entries[4].disable = false;
     x.ctx.chatId = 'next'; x.ctx.chatMetadata = {}; await x.app.onChatChanged();
     assert.equal(x.books.Other.entries[4].disable, false);
     const payload = { characterLore: [{ world: 'Other', uid: 4, disable: false }] };
     await x.app.onEntriesLoaded(payload); assert.equal(payload.characterLore[0].disable, false);
-    x.host.popup = async el => { x.popups.push(el); return true; };
-    for (const label of ['重选当前聊天', '看世界书状态']) {
-        [...x.document.querySelectorAll('button')].find(e => e.textContent === label).click(); await x.tick();
-        const popup = x.popups.at(-1);
-        assert.equal(popup.querySelectorAll('.tvrm-card').length, 2);
-        assert.doesNotMatch(popup.textContent, /Other/);
-    }
+    x.host.popup = async (el, ok) => { x.popups.push(el); return new Promise(() => {}); };
+    [...x.document.querySelectorAll('.tvrm-actions button')][0].click(); await x.tick();
+    const popup = x.popups.at(-1);
+    assert.equal(popup.querySelectorAll('.tvrm-pop-book').length, 2);
+    assert.doesNotMatch(popup.textContent, /Other/);
 });
