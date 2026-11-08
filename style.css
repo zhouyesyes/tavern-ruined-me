@@ -184,54 +184,30 @@
 .tvrm-detail-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 220px; overflow-y: auto; user-select: text; }
 .tvrm-pop-group .tvrm-row { font-size: 12px; }
 
-/* ---- 0.5.0 赊账本（第一版）：每本书一页账，分组是账目栏，弹窗是结账小票，预设格每个聊天一页账 ---- */
-.tvrm-panel, .tvrm-popup {
-    /* 旧纸色从主题底色里调出来：浅色主题是米黄旧纸，深色主题自动变成深色旧纸 */
-    --tvrm-paper: color-mix(in srgb, var(--SmartThemeBlurTintColor, #f4ecd8) 55%, #d8c590);
-    --tvrm-rule: color-mix(in srgb, var(--tvrm-text) 22%, transparent);
-    --tvrm-stamp: #b8372c;
-    --tvrm-hand: "STKaiti", "KaiTi", "Kaiti SC", "Xingkai SC", "Segoe Script", cursive;
-}
-.tvrm-card { background: var(--tvrm-paper); border-color: var(--tvrm-rule); border-radius: 4px;
-    box-shadow: 0 1px 0 var(--tvrm-rule), 3px 3px 0 color-mix(in srgb, var(--tvrm-text) 10%, transparent); }
-.tvrm-card > summary { background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--tvrm-rule) 0); }
-.tvrm-card > summary .tvrm-name { font-family: var(--tvrm-hand); font-size: 12px; letter-spacing: .04em; }
-.tvrm-card[open] > summary::after { content: '账'; flex: none; margin-left: 4px; width: 15px; line-height: 15px; text-align: center; font-size: 9px;
-    color: var(--tvrm-stamp); border: 1px solid var(--tvrm-stamp); border-radius: 3px; transform: rotate(-8deg); opacity: .85; font-family: var(--tvrm-hand); }
-.tvrm-card-body { border-top-color: var(--tvrm-rule);
-    background-image: repeating-linear-gradient(to bottom, transparent 0 21px, color-mix(in srgb, var(--tvrm-text) 8%, transparent) 21px 22px); }
-.tvrm-heading { font-family: var(--tvrm-hand); font-size: 12px; color: var(--tvrm-text); letter-spacing: .08em;
-    border-bottom: 2px double var(--tvrm-rule); padding-bottom: 2px; margin-top: 10px; }
-.tvrm-heading::before { content: '■ '; color: var(--tvrm-stamp); font-size: 9px; vertical-align: middle; }
-.tvrm-heading-all { margin-top: 18px; }
-.tvrm-sub { margin: 6px 0 2px; font-size: 11px; color: var(--tvrm-dim); letter-spacing: .06em; }
-.tvrm-entry-section > summary { border-bottom: 1px dashed var(--tvrm-rule); font-family: var(--tvrm-hand); font-size: 11.5px; }
-.tvrm-chip { border-radius: 3px; background: color-mix(in srgb, var(--tvrm-paper) 70%, transparent); }
-.tvrm-chip.is-on { border-color: var(--tvrm-stamp); background: color-mix(in srgb, var(--tvrm-stamp) 14%, transparent); }
-.tvrm-state.is-on { border-color: var(--tvrm-stamp); color: var(--tvrm-stamp); background: transparent; transform: rotate(-6deg); }
-.tvrm-tab.is-active { border-bottom-color: var(--tvrm-stamp); font-family: var(--tvrm-hand); }
-.tvrm-detail { background: color-mix(in srgb, var(--tvrm-text) 7%, transparent); border-left: 2px solid var(--tvrm-stamp); border-radius: 0 4px 4px 0; }
-/* 结账小票（弹窗）：窄纸条、虚线、等宽对齐 */
-.tvrm-popup { background: var(--tvrm-paper); padding: 10px 12px; border: 1px solid var(--tvrm-rule); border-radius: 2px;
-    -webkit-mask: radial-gradient(circle 4px at 4px 0, #0000 98%, #000) top / 8px 51% repeat-x, radial-gradient(circle 4px at 4px 100%, #0000 98%, #000) bottom / 8px 51% repeat-x;
-    mask: radial-gradient(circle 4px at 4px 0, #0000 98%, #000) top / 8px 51% repeat-x, radial-gradient(circle 4px at 4px 100%, #0000 98%, #000) bottom / 8px 51% repeat-x; }
-.tvrm-popup .tvrm-title { font-family: var(--tvrm-hand); text-align: center; font-size: 15px; letter-spacing: .3em; border-bottom: 1px dashed var(--tvrm-rule); padding-bottom: 6px; }
-.tvrm-popup .tvrm-title::after { content: '结'; display: inline-block; margin-left: 8px; width: 16px; line-height: 16px; font-size: 10px; letter-spacing: 0;
-    color: var(--tvrm-stamp); border: 1px solid var(--tvrm-stamp); border-radius: 3px; transform: rotate(-8deg); }
-.tvrm-pop-book h4 { font-family: var(--tvrm-hand); border-bottom: 1px dashed var(--tvrm-rule); }
-.tvrm-popup .tvrm-row { border-bottom: 1px dotted var(--tvrm-rule); }
-.tvrm-pop-total { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--tvrm-rule); text-align: right; font-family: var(--tvrm-hand); font-size: 12px; }
-/* 预设格：每个聊天一页账，存档像旧账页 */
-.tvrm-page { border-left: 4px solid var(--tvrm-stamp); }
-.tvrm-set { border: 1px solid var(--tvrm-rule); border-radius: 3px; background: color-mix(in srgb, var(--tvrm-paper) 80%, transparent); margin-top: 2px; }
-.tvrm-set.is-active { border-color: var(--tvrm-stamp); }
-.tvrm-set > summary { display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; cursor: pointer; list-style: none; }
-.tvrm-set > summary::-webkit-details-marker { display: none; }
-.tvrm-set > summary .tvrm-name { font-family: var(--tvrm-hand); min-width: 0; }
-.tvrm-set > summary .tvrm-count { white-space: nowrap; font-size: 10px; }
-.tvrm-ledger-lines { margin: 0; padding: 2px 8px 4px; list-style: none; }
-.tvrm-ledger-lines li { display: flex; align-items: center; gap: 5px; padding: 2px 0; border-bottom: 1px dotted var(--tvrm-rule); }
-.tvrm-ledger-lines li.is-off .tvrm-name { opacity: .55; }
-.tvrm-ledger-lines .tvrm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tvrm-set-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 6px; }
+/* ---- 0.6.0：朴素样式，只跟酒馆主题变量；预设格和「所有世界书」大折叠 ---- */
+.tvrm-heading { margin-top: 8px; }
+.tvrm-sub { margin: 6px 0 2px; font-size: 11px; }
+details.tvrm-all > summary { cursor: pointer; list-style: none; display: flex; align-items: center; }
+details.tvrm-all > summary::-webkit-details-marker { display: none; }
+details.tvrm-all > summary::before { content: '▸'; margin-right: 5px; }
+details.tvrm-all[open] > summary::before { content: '▾'; }
+details.tvrm-all > .tvrm-card { margin-top: 5px; }
+.tvrm-detail { background: color-mix(in srgb, var(--tvrm-text) 7%, transparent); border-radius: 6px; }
+/* 预设格：聊天名一行、预设名一行，不截断 */
 .tvrm-presets { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tvrm-page > summary, .tvrm-set > summary { flex-direction: column; align-items: flex-start; gap: 1px; cursor: pointer; list-style: none; }
+.tvrm-page > summary .tvrm-name, .tvrm-set > summary .tvrm-name { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.tvrm-page > summary .tvrm-count, .tvrm-set > summary .tvrm-count { white-space: normal; overflow-wrap: anywhere; }
+.tvrm-set { border: 1px solid var(--tvrm-line); border-radius: 6px; margin-top: 3px; }
+.tvrm-set.is-active { border-color: var(--tvrm-accent); }
+.tvrm-set > summary { display: flex; padding: 4px 8px; }
+.tvrm-set > summary::-webkit-details-marker { display: none; }
+.tvrm-ledger-lines { margin: 0; padding: 2px 8px 4px; list-style: none; }
+.tvrm-ledger-lines li { display: flex; align-items: center; gap: 5px; padding: 2px 0; border-bottom: 1px solid color-mix(in srgb, var(--tvrm-line) 50%, transparent); }
+.tvrm-ledger-lines li.is-off .tvrm-name { opacity: .55; }
+.tvrm-ledger-lines .tvrm-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tvrm-set-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 6px; }
+.tvrm-rename-row { padding: 2px 8px 0; }
+.tvrm-rename { all: unset; box-sizing: border-box; cursor: pointer; color: var(--tvrm-text); font-weight: 600; overflow-wrap: anywhere; }
+.tvrm-rename small { color: var(--tvrm-dim); font-weight: 400; font-size: 10px; }
+.tvrm-set .tvrm-group-edit { padding: 2px 0; }
