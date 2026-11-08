@@ -75,7 +75,7 @@ const presetKeeper = createPresetKeeper({
 });
 
 // API 格（钥匙本）接到酒馆：
-// - 反代列表：openai.js 的 proxies（存在设置里），下拉框 #openai_proxy_preset；只往里加，不改当前选中的那个
+// - 反代列表：openai.js 的 proxies（存在设置里），只在扫描时读，不往里加（她用自定义来源，看不到那块）
 // - 测连接：照酒馆「连接」按钮，POST /api/backends/chat-completions/status，带 reverse_proxy + proxy_password，
 //   酒馆服务器去拉一次 /models（手机上不会被跨域拦），回来 { data: [模型] } 或 { error }
 const keyKeeper = createKeyKeeper({
@@ -83,17 +83,7 @@ const keyKeeper = createKeyKeeper({
     getContext,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
     confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
-    proxy: {
-        names: () => (oai.proxies || []).map(p => p.name),
-        list: () => (oai.proxies || []).map(p => ({ name: p.name, url: p.url, password: p.password })),
-        add: ({ name, url, password }) => {
-            if (!Array.isArray(oai.proxies)) throw new Error('这版酒馆找不到反代列表');
-            oai.proxies.push({ name, url, password });
-            const sel = document.getElementById('openai_proxy_preset');
-            if (sel) { const o = document.createElement('option'); o.value = name; o.textContent = name; sel.append(o); }
-            getContext().saveSettingsDebounced?.();
-        },
-    },
+    proxy: { list: () => (oai.proxies || []).map(p => ({ name: p.name, url: p.url, password: p.password })) }, // 扫描时读一下酒馆反代列表
     probe: async (url, key) => {
         const res = await fetch('/api/backends/chat-completions/status', {
             method: 'POST', headers: getContext().getRequestHeaders(), cache: 'no-cache',

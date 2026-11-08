@@ -234,7 +234,6 @@ details.tvrm-all > .tvrm-card { margin-top: 5px; }
 .tvrm-key-field { display: flex; align-items: center; gap: 6px; margin: 0; }
 .tvrm-key-field > span { flex: 0 0 2.6em; color: var(--tvrm-dim); font-size: .9em; }
 .tvrm-key-field .text_pole { flex: 1; min-width: 0; margin: 0; }
-.tvrm-key-check { display: flex; align-items: center; gap: 4px; font-size: .9em; margin: 0; }
 /* 点哪填哪：输入框右边的小钥匙，和从下面弹上来的选单（框在弹窗里时放进那个弹窗，见 keysUI.mjs 的 layerOf） */
 .tvrm-key-pill.in-dialog { position: absolute; }
 .tvrm-key-pill { position: fixed; z-index: 2147483000; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #888);

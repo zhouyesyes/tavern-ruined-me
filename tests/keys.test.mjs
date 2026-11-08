@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
-import { classifyField, scanSettings, normalizeUrl, newKey, maskKey, searchKeys, parseModels, freeProxyName } from '../src/keys.mjs';
+import { classifyField, scanSettings, normalizeUrl, newKey, maskKey, searchKeys, parseModels } from '../src/keys.mjs';
 import { createKeyKeeper } from '../src/keysUI.mjs';
 
 test('认框：密钥框、地址框，别的不认', () => {
@@ -21,7 +21,7 @@ test('认框：密钥框、地址框，别的不认', () => {
     assert.equal(classifyField({ type: 'checkbox', id: 'api_key_on' }), null);
 });
 
-test('地址整理、遮住密钥、搜索、模型列表、反代起名不重名', () => {
+test('地址整理、遮住密钥、搜索、模型列表', () => {
     assert.equal(normalizeUrl('api.x.com/v1/'), 'https://api.x.com/v1');
     assert.equal(normalizeUrl('https://API.x.com/v1/chat/completions'), 'https://api.x.com/v1');
     assert.equal(maskKey('sk-abcdefghijklmn'), 'sk-ab…klmn');
@@ -29,7 +29,6 @@ test('地址整理、遮住密钥、搜索、模型列表、反代起名不重�
     assert.deepEqual(searchKeys(list, '便宜').map(k => k.name), ['主力']);
     assert.deepEqual(searchKeys(list, 'flux').map(k => k.name), ['生图']);
     assert.deepEqual(parseModels({ data: [{ id: 'b' }, { id: 'a' }, { id: 'a' }] }), ['a', 'b']);
-    assert.equal(freeProxyName('主力', ['主力', '主力 2']), '主力 3');
     assert.equal(newKey({ url: 'https://c.com/v1' }).name, 'c.com');
 });
 
@@ -44,7 +43,7 @@ function setup() {
     const ctx = { extensionSettings: {}, saveSettingsDebounced() {} };
     const toasts = []; const proxies = [{ name: '主力', url: 'https://relay.com/v1', password: 'sk-relay-123' }, { name: 'None', url: '', password: '' }];
     const keeper = createKeyKeeper({ document, getContext: () => ctx, toast: (k, m) => toasts.push([k, m]), confirm: async () => true,
-        proxy: { names: () => proxies.map(p => p.name), list: () => proxies, add: p => proxies.push(p) },
+        proxy: { list: () => proxies },
         probe: async (url, key) => { if (key !== 'sk-good') throw new Error('401'); return ['m2', 'm1']; } });
     return { dom, document, ctx, keeper, toasts, proxies };
 }
@@ -62,7 +61,7 @@ test('点哪填哪：认出框，填一个顺手把配对的另一个也填上�
     assert.equal(lonely.value, 'sk-1'); // 没有配对的就只填这一个
 });
 
-test('面板：新建默认进酒馆反代列表（不重名）、测连接拿到模型、挑模型；没有「搬过来」', async () => {
+test('面板：新建、测连接拿到模型、挑模型；没有「搬过来」，也不往酒馆反代列表里加', async () => {
     const x = setup(); const d = x.document; const box = d.getElementById('box');
     x.ctx.extensionSettings.apiVault = { profiles: [{ name: '旧的', url: 'https://old.com', key: 'sk-old' }] };
     x.keeper.render(box);
@@ -72,24 +71,13 @@ test('面板：新建默认进酒馆反代列表（不重名）、测连接拿�
     inputs[0].value = '主力'; inputs[1].value = 'https://new.com/v1'; inputs[2].value = 'sk-good';
     [...ed.querySelectorAll('button')].find(b => b.textContent === '保存').click();
     const k = x.keeper.store().keys[0];
-    assert.equal(k.name, '主力'); assert.equal(k.proxyName, '主力 2'); assert.equal(x.proxies.at(-1).url, 'https://new.com/v1');
+    assert.equal(k.name, '主力'); assert.equal(x.proxies.length, 2); assert.equal(box.querySelector('input[type=checkbox]'), null);
     const card = box.querySelector('.tvrm-key'); card.open = true;
     [...card.querySelectorAll('button')].find(b => b.textContent === '测连接').click();
     await new Promise(r => setTimeout(r, 5));
     assert.deepEqual(k.models, ['m2', 'm1']); assert.match(box.textContent, /通了 · 2 个模型/);
     [...box.querySelectorAll('.tvrm-chip')].find(b => b.textContent === 'm1').click();
     assert.equal(k.model, 'm1');
-});
-
-test('新建时去掉「也放进酒馆的反代列表」就不放', () => {
-    const x = setup(); const d = x.document; const box = d.getElementById('box');
-    x.keeper.render(box);
-    [...box.querySelectorAll('button')].find(b => b.textContent === '新建').click();
-    const ed = box.querySelector('.tvrm-key-editor'); const inputs = ed.querySelectorAll('input');
-    inputs[1].value = 'https://img.com'; inputs[2].value = 'sk-img';
-    ed.querySelector('input[type=checkbox]').checked = false;
-    [...ed.querySelectorAll('button')].find(b => b.textContent === '保存').click();
-    assert.equal(x.proxies.length, 2); assert.equal(x.keeper.store().keys[0].proxyName, '');
 });
 
 test('框在弹窗里：小钥匙和选单放进那个弹窗（不然会被弹窗盖住）；不在弹窗里就放在页面上', () => {
@@ -142,4 +130,19 @@ test('扫描按钮：列出酒馆反代列表和插件里的，已有的不勾�
     const keys = x.keeper.store().keys; assert.equal(keys.length, 2);
     assert.equal(keys[1].url, 'https://img.com/v1'); assert.match(keys[1].note, /imageGen/);
     assert.equal(box.querySelector('.tvrm-scan'), null);
+});
+
+test('小钥匙：页面滚动后还在、跟着框走；点到别处才收起', async () => {
+    const x = setup(); const d = x.document; const win = x.dom.window;
+    x.keeper.store().keys.push(newKey({ name: '主力', url: 'https://a.com/v1', key: 'sk-1' }));
+    x.keeper.initFill();
+    const u = d.getElementById('u'); u.focus();
+    assert.ok(d.querySelector('.tvrm-key-pill'));
+    win.dispatchEvent(new win.Event('scroll')); u.dispatchEvent(new win.Event('blur'));
+    await new Promise(r => setTimeout(r, 30));
+    assert.ok(d.querySelector('.tvrm-key-pill'), '滚动、失焦后还在');
+    d.querySelector('.tvrm-key-pill').dispatchEvent(new win.Event('pointerdown', { bubbles: true }));
+    assert.ok(d.querySelector('.tvrm-key-pill'), '按小钥匙不收起');
+    d.getElementById('box').dispatchEvent(new win.Event('pointerdown', { bubbles: true }));
+    assert.equal(d.querySelector('.tvrm-key-pill'), null, '点到别处收起');
 });

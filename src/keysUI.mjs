@@ -1,8 +1,8 @@
 // API 格：钥匙本的界面 + 「点哪填哪」。全部自己写。
 // host: document, getContext(), toast(kind,msg), confirm(text),
-//       proxy: { names(), list() → [{name,url,password}], add({name,url,password}) }   酒馆的反代列表
+//       proxy: { list() → [{name,url,password}] }   酒馆的反代列表（只在扫描时读，不往里加）
 //       probe(url, key) → 模型名数组（走酒馆服务器拉一次模型列表；不通就抛错）
-import { KEYS, newKey, maskKey, searchKeys, freeProxyName, classifyField, autoName, scanSettings, sameKey, hostOf } from './keys.mjs';
+import { KEYS, newKey, maskKey, searchKeys, classifyField, autoName, scanSettings, sameKey, hostOf } from './keys.mjs';
 
 export function createKeyKeeper(host) {
     const doc = host.document;
@@ -32,16 +32,6 @@ export function createKeyKeeper(host) {
         catch { toast('warning', '没能复制，长按手动选一下'); }
     }
 
-    // 放进酒馆的反代列表（新建时默认勾着）
-    function addToProxies(k) {
-        if (!host.proxy || !k.url) return;
-        try {
-            const name = freeProxyName(k.name, host.proxy.names());
-            host.proxy.add({ name, url: k.url, password: k.key });
-            k.proxyName = name;
-        } catch (e) { toast('warning', '没能放进酒馆的反代列表：' + (e.message || e)); }
-    }
-
     async function test(k) {
         if (!k.url) { toast('warning', '先填地址'); return; }
         busy.add(k.id); rerender?.();
@@ -58,7 +48,7 @@ export function createKeyKeeper(host) {
     // 扫描：酒馆反代列表 + 所有插件设置里存的「地址 + 密钥」；已经在钥匙本里的标出来，不勾
     function scan() {
         const list = [];
-        for (const p of host.proxy?.list?.() || []) if (p?.url && p.password) list.push({ source: '酒馆反代列表', path: '酒馆反代列表 › ' + p.name, name: p.name, url: p.url, key: p.password, proxyName: p.name });
+        for (const p of host.proxy?.list?.() || []) if (p?.url && p.password) list.push({ source: '酒馆反代列表', path: '酒馆反代列表 › ' + p.name, name: p.name, url: p.url, key: p.password });
         list.push(...scanSettings(ctx().extensionSettings, [KEYS, 'tavern_ruined_me', 'tavern_ruined_me_presets']));
         const mine = store().keys; const seen = new Set();
         found = list.filter(f => { const id = f.url + '|' + f.key; if (seen.has(id)) return false; seen.add(id); return true; })
@@ -83,7 +73,7 @@ export function createKeyKeeper(host) {
             rows.length ? rows : h('p', { class: 'tvrm-empty' }, '酒馆反代列表和插件设置里都没找到'),
             rows.length ? h('div', { class: 'tvrm-set-actions' }, btn('收进钥匙本', () => {
                 const take = found.filter(f => f.pick && !f.have);
-                for (const f of take) store().keys.push(newKey({ name: f.name, url: f.url, key: f.key, proxyName: f.proxyName, note: '扫描来自 ' + f.path }));
+                for (const f of take) store().keys.push(newKey({ name: f.name, url: f.url, key: f.key, note: '扫描来自 ' + f.path }));
                 found = null; save(); rerender?.();
                 toast('success', take.length ? `收进来 ${take.length} 条` : '没有勾选');
             })) : null);
@@ -100,22 +90,20 @@ export function createKeyKeeper(host) {
             note: h('textarea', { class: 'text_pole', rows: 2, placeholder: '备注' }),
         };
         f.note.value = draft.note || '';
-        const proxy = h('input', { type: 'checkbox', checked: true });
         const models = h('datalist', { id: 'tvrm-models-' + (draft.ref?.id || 'new') }, (draft.ref?.models || []).map(m => h('option', { value: m })));
         const row = (label, el) => h('label', { class: 'tvrm-key-field' }, h('span', null, label), el);
         return h('div', { class: 'tvrm-key-editor' },
             row('名字', f.name), row('地址', f.url), row('密钥', f.key), row('模型', f.model), models, row('标签', f.tags), row('备注', f.note),
-            isNew && host.proxy ? h('label', { class: 'tvrm-key-check' }, proxy, ' 也放进酒馆的反代列表') : null,
             h('div', { class: 'tvrm-set-actions' },
                 btn('保存', () => {
                     const k = newKey({ ...(draft.ref || {}), name: f.name.value, url: f.url.value, key: f.key.value || draft.ref?.key || '', model: f.model.value, tags: f.tags.value, note: f.note.value });
                     if (!k.url && !k.key) { toast('warning', '地址和密钥至少填一个'); return; }
                     if (f.key.value) k.keyHint = '';
                     const list = store().keys;
-                    if (isNew) { if (proxy.checked) addToProxies(k); list.unshift(k); }
+                    if (isNew) list.unshift(k);
                     else Object.assign(draft.ref, k);
                     editing = null; save(); rerender?.();
-                    toast('success', isNew && k.proxyName ? `存好了，也放进了酒馆的反代列表「${k.proxyName}」` : '存好了');
+                    toast('success', '存好了');
                 }),
                 btn('取消', () => { editing = null; rerender?.(); })));
     }
@@ -134,15 +122,13 @@ export function createKeyKeeper(host) {
             line('模型', k.model),
             line('标签', (k.tags || []).join('、')),
             line('备注', k.note),
-            line('反代', k.proxyName ? '在酒馆的反代列表里：' + k.proxyName : ''),
             t ? h('div', { class: 'tvrm-key-test ' + (t.ok ? 'is-ok' : 'is-bad') }, t.ok ? `通了 · ${t.n} 个模型` : '没通：' + t.msg) : null,
             k.models?.length ? h('details', { class: 'tvrm-key-models' }, h('summary', null, `挑模型（${k.models.length}）`),
                 h('div', { class: 'tvrm-key-model-list' }, k.models.map(m => h('button', { type: 'button', class: 'tvrm-chip' + (m === k.model ? ' is-on' : ''), onclick: () => { k.model = m; save(); rerender?.(); } }, m)))) : null,
             h('div', { class: 'tvrm-set-actions' },
                 btn(busy.has(k.id) ? '测试中…' : '测连接', () => !busy.has(k.id) && test(k)),
                 btn('编辑', () => { editing = { ...k, ref: k }; rerender?.(); }),
-                k.url && !k.proxyName && host.proxy ? btn('放进酒馆反代', () => { addToProxies(k); save(); rerender?.(); }) : null,
-                btn('删除', async () => { if (await host.confirm?.(`删除「${k.name}」？酒馆反代列表里的不会跟着删。`)) { store().keys = store().keys.filter(x => x !== k); save(); rerender?.(); } }, 'tvrm-delete'))));
+                btn('删除', async () => { if (await host.confirm?.(`删除「${k.name}」？`)) { store().keys = store().keys.filter(x => x !== k); save(); rerender?.(); } }, 'tvrm-delete'))));
         return d;
     }
 
@@ -202,23 +188,32 @@ export function createKeyKeeper(host) {
     }
     // 框在弹窗（<dialog>，浏览器的最上层）里：小钥匙和选单也放进那个弹窗，不然会被它盖住看不见；不在弹窗里就放在页面上
     const layerOf = el => el?.closest?.('dialog[open]') || doc.body;
-    function hidePill() { pill?.remove(); pill = null; }
+    let follow = null; // 正在跟着的框：页面滚动、窗口变大小（键盘弹出收起）时重新对位置
+    function hidePill() { pill?.remove(); pill = null; follow = null; }
     function closeSheet() { sheet?.remove(); sheet = null; }
+    // 小钥匙贴在框里面的右边尽头；页面滚动、键盘弹出时跟着框走（iPhone 点进框会自己滚一下，以前一滚就把钥匙藏了）
+    function place(el) {
+        if (!pill) return;
+        if (!el.isConnected) { hidePill(); return; }
+        const r = el.getBoundingClientRect(); const layer = pill.parentElement;
+        const base = layer === doc.body || !layer ? { top: 0, left: 0 } : layer.getBoundingClientRect();
+        pill.style.visibility = r.width && r.height ? '' : 'hidden';
+        pill.style.top = Math.max(0, r.top - base.top + (r.height - 28) / 2) + 'px';
+        pill.style.left = Math.max(0, r.right - base.left - 32) + 'px';
+    }
     function showPill(el, kind) {
         hidePill();
         if (!store().keys.length) return;
-        const r = el.getBoundingClientRect(); const layer = layerOf(el);
+        const layer = layerOf(el);
         pill = h('button', { type: 'button', class: 'tvrm-key-pill', title: '从钥匙本里填', 'aria-label': '从钥匙本里填' }, h('i', { class: 'fa-solid fa-key' }));
-        // 弹窗里：按弹窗的位置算（弹窗自己是定位的）；页面上：按屏幕位置算
-        const base = layer === doc.body ? { top: 0, left: 0 } : layer.getBoundingClientRect();
-        if (layer !== doc.body) pill.classList.add('in-dialog');
-        pill.style.top = Math.max(0, r.top - base.top + (r.height - 28) / 2) + 'px';
-        pill.style.left = Math.max(0, r.right - base.left - 32) + 'px';
-        // 按下去时不让输入框失焦（手机上键盘不会收起又弹出）
+        if (layer !== doc.body) pill.classList.add('in-dialog'); // 弹窗里按弹窗的位置算（弹窗自己是定位的）
+        // 按下去时不让输入框失焦（键盘不会收起又弹出）
         pill.addEventListener('pointerdown', e => e.preventDefault());
         pill.addEventListener('mousedown', e => e.preventDefault());
         pill.addEventListener('click', () => openSheet(kind));
         layer.append(pill);
+        follow = el; place(el);
+        doc.defaultView.setTimeout(() => follow && place(follow), 350); // iPhone 键盘弹出、页面滚完以后再对一次
     }
     function openSheet(kind) {
         closeSheet();
@@ -243,9 +238,19 @@ export function createKeyKeeper(host) {
             const kind = kindOf(el);
             if (kind) { target = { el, kind }; showPill(el, kind); }
         });
-        doc.addEventListener('focusout', () => setTimeout(() => { if (!sheet && !doc.activeElement?.closest?.('.tvrm-key-pill')) hidePill(); }, 200));
-        doc.addEventListener('pointerdown', e => { if (sheet && !e.target.closest?.('.tvrm-key-sheet')) closeSheet(); }, true);
-        doc.defaultView.addEventListener('scroll', hidePill, { passive: true, capture: true });
+        const replace = () => { if (follow) place(follow); };
+        const win = doc.defaultView;
+        win.addEventListener('scroll', replace, { passive: true, capture: true });
+        win.addEventListener('resize', replace, { passive: true });
+        win.visualViewport?.addEventListener('resize', replace, { passive: true });
+        win.visualViewport?.addEventListener('scroll', replace, { passive: true });
+        // 点到别处（不是小钥匙、不是选单、不是这个框）才收起；不看「框有没有失焦」，iPhone 上失焦时机不准
+        doc.addEventListener('pointerdown', e => {
+            const t = e.composedPath?.()[0] || e.target;
+            if (t?.closest?.('.tvrm-key-pill, .tvrm-key-sheet') || t === target?.el) return;
+            closeSheet();
+            if (!kindOf(t)) hidePill();
+        }, true);
     }
 
     return { render, initFill, store, kindOf, partnerOf, fill: k => fill(k), setTarget: (el, kind) => { target = { el, kind }; } };
