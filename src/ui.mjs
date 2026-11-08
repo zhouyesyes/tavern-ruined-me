@@ -26,6 +26,8 @@ export function createApp(host) {
     let queue = Promise.resolve();
     let revision = 0;
     let ownSave = false;
+    let lockToken = null; // 切聊天时上锁：读出新聊天自己的配置、写回原书完成前，任何开关变化都不记
+    const locked = () => lockToken !== null && current(lockToken);
     const entryCache = new Map();
     const pending = new Map();
     function h(tag, attrs, ...kids) {
@@ -93,6 +95,13 @@ export function createApp(host) {
     async function synchronize(t, restore = false) {
         if (!current(t)) return;
         const s = settings();
+        // 新聊天第一次进来没有自己的配置：沿用原书现状（等同切进聊天，不当成手动修改）
+        if (!chatWorld()) restore = true;
+        if (restore) lockToken = t;
+        try { await synchronizeInner(t, restore, s); }
+        finally { if (lockToken === t) lockToken = null; } // 写回完成（或被新切换取代）才解锁
+    }
+    async function synchronizeInner(t, restore, s) {
         const chat = clone(chatWorld() || emptyWorldChat());
         const loaded = [];
         for (const name of bookNames()) {
@@ -113,7 +122,7 @@ export function createApp(host) {
             // 保存前再读一次：载入过程中别的扩展也可能改书。
             const data = await readBook(name);
             if (!current(t)) return;
-            reconcileBook(s, chat, name, data);
+            reconcileBook(s, chat, name, data, restore); // 上锁期间第二遍也只当还原，不记录
             await writePlan(t, name, data, chat);
         }
         if (!current(t)) return;
@@ -136,11 +145,11 @@ export function createApp(host) {
         if (!plan.length) return;
         if (!meta.backup) { meta.backup = snapshotBook(data); saveSettings(); }
         for (const change of plan) data.entries[change.uid].disable = change.disable;
+        // 先记下「插件自己写成了什么」再保存：保存引起的事件晚到也认得出是自己写的，不算外部修改。
+        s.world.physical[name] = Object.fromEntries(Object.values(data.entries).map(e => [String(e.uid), e.disable !== true]));
         ownSave = true;
         try { await host.saveWorldInfo(name, data, true); }
         finally { ownSave = false; }
-        // 记录已经发出的写入，即使此时换窗，下一窗也能识别这是插件刚写的。
-        s.world.physical[name] = Object.fromEntries(Object.values(data.entries).map(e => [String(e.uid), e.disable !== true]));
         entryCache.set(name, Object.values(data.entries));
         saveSettings();
     }
@@ -165,6 +174,7 @@ export function createApp(host) {
     const onChatCreated = () => onChatChanged(); // 新开聊天不再弹窗
     function onWorldChanged() {
         if (ownSave) return;
+        if (locked()) return; // 切聊天还没处理完：上一个聊天留在原书里的状态不是手动修改
         if (current(ready)) return scheduleWriteBack();
         // 还没读完这个聊天（或换了聊天）：按切聊天处理，以聊天自己存的选择为准
         const same = ready && ready.id === ctx().chatId && ready.character === ctx().characterId && ready.group === ctx().groupId && ready.meta === ctx().chatMetadata;
@@ -180,7 +190,8 @@ export function createApp(host) {
         const id = source.chatId;
         const character = source.characterId;
         const group = source.groupId;
-        if (!current(ready)) await onChatChanged();
+        if (locked()) await queue;
+        else if (!current(ready)) await onChatChanged();
         if (!current(ready) || metadata !== ctx().chatMetadata || id !== ctx().chatId || character !== ctx().characterId || group !== ctx().groupId) return;
         const s = settings();
         const chat = chatWorld();

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-const { JSDOM } = createRequire('/tmp/claude-0/-home-user/491fd2d7-bc6d-5287-8965-db6383f3255b/scratchpad/jsd/')('jsdom');
+const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
 import { createApp } from '../src/ui.mjs';
 const copy = x => JSON.parse(JSON.stringify(x));
 function setup() {
@@ -273,4 +273,36 @@ test('未分类也没绑的书不出现；分过类没绑的书可归类，但�
     const popup = x.popups.at(-1);
     assert.equal(popup.querySelectorAll('.tvrm-pop-book').length, 2);
     assert.doesNotMatch(popup.textContent, /Other/);
+});
+
+test('跟着聊天走：A 改民国，切 B 仍是现代；B 改，切回 A 是民国；来回切 3 次都对（含酒馆晚到的事件）', async () => {
+    const x = setup(); await x.app.init();
+    // 条目一=现代，条目二=民国；A 聊天先改成民国
+    const metaA = x.ctx.chatMetadata;
+    const lateEvents = () => { setTimeout(() => x.app.onWorldChanged(), 0); }; // 酒馆保存后晚到的更新事件
+    const saveOrig = x.host.saveWorldInfo;
+    x.host.saveWorldInfo = async (n, d) => { await saveOrig(n, d); lateEvents(); };
+    await x.toggle('条目一', false); await x.toggle('条目二', true); await x.app.whenIdle();
+    assert.deepEqual([x.books.A.entries[1].disable, x.books.A.entries[2].disable], [true, false]);
+    // B：另一个聊天，自己存的是现代（条目一开、条目二关）
+    const metaB = { tavern_ruined_me: { v: 1, slots: { world: { groups: {}, books: { A: true, G: true }, entries: { A: { 1: true, 2: false }, G: { 3: true } } } } } };
+    const sw = async (meta, id) => {
+        x.ctx.chatMetadata = meta; x.ctx.chatId = id;
+        const p = x.app.onChatChanged();
+        x.app.onWorldChanged(); // 切换中酒馆又发更新事件：上锁期间不许记
+        await p; await x.run(); await new Promise(r => setTimeout(r, 5)); await x.run();
+    };
+    const modern = () => [x.books.A.entries[1].disable, x.books.A.entries[2].disable];
+    for (let i = 0; i < 3; i++) {
+        await sw(metaB, 'B');
+        assert.deepEqual(modern(), [false, true], 'B 应是现代 第' + i);
+        assert.deepEqual(metaB.tavern_ruined_me.slots.world.entries.A, { 1: true, 2: false });
+        if (i === 0) { // B 自己改成民国再改回现代
+            await x.toggle('条目一', false); await x.toggle('条目二', true); await x.app.whenIdle();
+            await x.toggle('条目一', true); await x.toggle('条目二', false); await x.app.whenIdle();
+        }
+        await sw(metaA, 'A');
+        assert.deepEqual(modern(), [true, false], 'A 应是民国 第' + i);
+        assert.deepEqual(metaA.tavern_ruined_me.slots.world.entries.A, { 1: false, 2: true });
+    }
 });

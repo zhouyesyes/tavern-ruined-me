@@ -247,7 +247,7 @@ export function reconcileBook(settings, chat, name, data, restore = false) {
         const uid = String(entry.uid);
         const on = entry.disable !== true;
         observed[uid] = on;
-        const changed = !restore && (!previous || (uid in previous && previous[uid] !== on));
+        const changed = !restore && !!previous && uid in previous && previous[uid] !== on;
         if (changed) {
             chat.entries[name][uid] = on;
             external = true;
