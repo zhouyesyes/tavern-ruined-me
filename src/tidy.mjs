@@ -94,6 +94,15 @@ const CSS = `
 .tvrm-tidy-fold>span:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
 .tvrm-tidy-fold small{opacity:.7;font-size:.8em}
 .tvrm-tidy-fold[hidden]{display:none!important}
+.tvrm-tidy-more-head.is-open{border-bottom-left-radius:2px}
+.tvrm-tidy-sub{font-size:.92em;border-left:2px solid var(--SmartThemeBorderColor,#7775);padding-left:6px;box-sizing:border-box}
+.tvrm-tidy-sub .inline-drawer-header{background:color-mix(in srgb,var(--SmartThemeBodyColor,#888) 4%,transparent)!important;border-color:color-mix(in srgb,var(--SmartThemeBorderColor,#7775) 55%,transparent)!important;padding-block:5px!important;min-height:0!important}
+.tvrm-tidy-more-tail{font:inherit;font-size:.85em;color:var(--SmartThemeBodyColor,inherit);opacity:.75;cursor:pointer;background:none;border:0;border-left:2px solid var(--SmartThemeBorderColor,#7775);text-align:left;padding:6px 10px;margin:0 0 10px 14px!important;width:calc(100% - 14px)!important;box-sizing:border-box}
+@keyframes tvrm-tidy-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes tvrm-tidy-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
+.tvrm-tidy-in{animation:tvrm-tidy-in .24s ease-out}
+.tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
+@media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
 @media (max-width:600px),(pointer:coarse) and (max-width:1200px){
  .tvrm-tidy-regex #regex_container{max-width:100%;overflow-x:hidden;box-sizing:border-box}
@@ -127,6 +136,7 @@ export function createTidy(host) {
     const bare = new Map(); // 元素 → 原来有没有 class / style 属性（没有的，退回去时把空属性也去掉）
     const note = (el, attr) => { if (!bare.has(el)) bare.set(el, {}); bare.get(el)[attr] ??= !el.hasAttribute(attr); };
     function addClass(el, c) { if (!el) return; note(el, 'class'); if (!classes.has(el)) classes.set(el, new Set()); if (!el.classList.contains(c)) { el.classList.add(c); classes.get(el).add(c); } }
+    function dropClass(el, c) { el.classList.remove(c); classes.get(el)?.delete(c); }
     function setStyle(el, prop, value) {
         if (!el) return;
         note(el, 'style');
@@ -206,7 +216,7 @@ export function createTidy(host) {
         const b = doc.createElement('button'); b.type = 'button'; b.className = 'tvrm-tidy-fold';
         const t = doc.createElement('span'); const strong = doc.createElement('strong'); strong.textContent = label; t.append(strong);
         if (tip) { const sm = doc.createElement('small'); sm.textContent = tip; t.append(sm); }
-        const arrow = doc.createElement('span'); arrow.textContent = open ? '▴' : '▾';
+        const arrow = doc.createElement('span'); arrow.className = 'tvrm-tidy-arrow'; arrow.textContent = open ? '▾' : '▸';
         b.append(t, arrow);
         b.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); onClick(); });
         added.add(b);
@@ -275,11 +285,41 @@ export function createTidy(host) {
         const extras = S().foldExtras ? extrasRows(parent, roots) : [];
         const n = folded.length + (extras.length ? 1 : 0);
         if (!n) return;
-        const open = S().extOpen;
-        const head = fold(`更多扩展设置（${n}）`, '不常用的都在这里', open, () => { S().extOpen = !S().extOpen; save(); apply(); });
-        head.classList.add('tvrm-tidy-row'); roots[0].prepend(head); setStyle(head, 'order', '100');
-        folded.forEach((it, i) => { setStyle(it.el, 'order', String(200 + i)); if (!open) addClass(it.el, 'tvrm-tidy-gone'); });
-        extras.forEach((el, i) => { setStyle(el, 'order', String(1000 + i)); if (!open) addClass(el, 'tvrm-tidy-gone'); });
+        // 展开 / 收起只改这几个元素的 class，不整页重排（整页重排会跳）；展开的往下长出来，比外面的小一号、底色淡一点
+        const sub = [...folded.map(it => it.el), ...extras];
+        const head = fold(`更多扩展设置（${n}）`, '不常用的都在这里，点开往下展开', S().extOpen, () => toggleMore());
+        head.classList.add('tvrm-tidy-row', 'tvrm-tidy-more-head'); roots[0].prepend(head); setStyle(head, 'order', '100');
+        const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-row tvrm-tidy-more-tail'; tail.textContent = '▴ 收起更多扩展设置';
+        tail.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); toggleMore(); });
+        added.add(tail); roots[0].append(tail); setStyle(tail, 'order', '1999'); setStyle(tail, 'margin-inline-start', '14px'); setStyle(tail, 'width', 'calc(100% - 14px)');
+        folded.forEach((it, i) => setStyle(it.el, 'order', String(200 + i)));
+        extras.forEach((el, i) => setStyle(el, 'order', String(1000 + i)));
+        for (const el of sub) { addClass(el, 'tvrm-tidy-sub'); setStyle(el, 'margin-inline-start', '14px'); setStyle(el, 'width', 'calc(100% - 14px)'); }
+        const show = open => {
+            head.querySelector('.tvrm-tidy-arrow').textContent = open ? '▾' : '▸';
+            head.classList.toggle('is-open', open);
+            for (const el of [...sub, tail]) open ? dropClass(el, 'tvrm-tidy-gone') : addClass(el, 'tvrm-tidy-gone');
+        };
+        let timer = null;
+        function toggleMore() {
+            const open = S().extOpen = !S().extOpen; save();
+            clearTimeout(timer);
+            if (open) {
+                show(true);
+                for (const el of [...sub, tail]) { dropClass(el, 'tvrm-tidy-out'); addClass(el, 'tvrm-tidy-in'); }
+                timer = setTimeout(() => { if (head.isConnected) for (const el of [...sub, tail]) dropClass(el, 'tvrm-tidy-in'); }, 260);
+            } else {
+                for (const el of [...sub, tail]) { dropClass(el, 'tvrm-tidy-in'); addClass(el, 'tvrm-tidy-out'); }
+                timer = setTimeout(() => {
+                    if (!head.isConnected) return; // 这期间整理过一遍（或关掉了），不管了
+                    for (const el of [...sub, tail]) dropClass(el, 'tvrm-tidy-out');
+                    show(false);
+                    // 从底下点的收起：标题要是跑到屏幕上面去了，轻轻滚回到标题，别让人找不着
+                    if (head.getBoundingClientRect?.().top < 0) head.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+                }, 160);
+            }
+        }
+        show(S().extOpen);
     }
     let search = null;
     function applyUser() {

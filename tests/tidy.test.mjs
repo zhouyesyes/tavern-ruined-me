@@ -105,9 +105,24 @@ test('开了：顶部按钮、三横菜单、魔法棒、扩展页、用户设�
     assert.match(head.textContent, /更多扩展设置（2）/);
     // 用户设置：两段折起来
     assert.ok(gone(doc.querySelector('[name="themeElements"] > div:not(.tvrm-tidy-fold)')));
-    // 点开「更多扩展设置」
+    // 点开「更多扩展设置」：原地展开（不重排整页），收着的那几个挂上「小一号、淡底色」，底下多一个「收起」
+    const tail = doc.querySelector('.tvrm-tidy-more-tail');
+    assert.ok(gone(tail));
     head.click();
+    assert.equal(doc.querySelector('#extensions_settings > .tvrm-tidy-fold'), head); // 没有重建
     assert.ok(!gone(doc.getElementById('assets_container')));
+    assert.ok(doc.getElementById('assets_container').classList.contains('tvrm-tidy-sub'));
+    assert.ok(!doc.getElementById('regex_container').classList.contains('tvrm-tidy-sub'));
+    assert.ok(!gone(tail));
+    assert.equal(head.querySelector('.tvrm-tidy-arrow').textContent, '▾');
+    // 从底下收起：动画放完才藏
+    tail.click();
+    assert.ok(!gone(doc.getElementById('assets_container')));
+    await new Promise(r => setTimeout(r, 220));
+    assert.ok(gone(doc.getElementById('assets_container')));
+    assert.ok(gone(tail));
+    assert.equal(head.querySelector('.tvrm-tidy-arrow').textContent, '▸');
+    head.click(); // 再开着关掉整理，也要退干净
     // 关掉：页面和原来一模一样（菜单项回到原位置、行内样式和 class 都退回去）
     tidy.settings().on = false; tidy.apply();
     assert.equal(doc.body.innerHTML, before);
