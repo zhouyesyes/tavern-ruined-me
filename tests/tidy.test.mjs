@@ -187,3 +187,43 @@ test('搬砚台里的选择', () => {
     assert.deepEqual(next.extSeen, ['id:a', 'id:b']);
     assert.equal(fromYantai(null, mine), null);
 });
+
+test('酒馆自己藏着的不列出来（displayNone、只在某些聊天里才出现的）', () => {
+    const dom = new JSDOM(`<head><style>.displayNone{display:none}</style></head><body>
+        <div id="top-settings-holder"><div id="ai-config-button" class="drawer"><div class="drawer-toggle"></div></div><div id="ghost" class="drawer" style="display:none"><div class="drawer-toggle" title="鬼"></div></div></div>
+        <div id="extensionsMenu"><div class="list-group-item"><span>看得到</span></div><div class="list-group-item displayNone"><span>藏着的</span></div></div>
+        <div id="options"><div class="options-content">
+            <a id="option_close_chat" class="displayNone"><span>关闭聊天</span></a>
+            <a id="option_settings" class="displayNone"><span>切换面板</span></a>
+            <a id="option_back_to_main" style="display: none;"><span>返回到父级聊天</span></a>
+            <a id="option_start_new_chat"><span>开始新聊天</span></a>
+            <a id="option_close_chat"><span>关闭聊天</span></a>
+        </div></div></body>`);
+    const c = { extensionSettings: { [TIDY]: { on: true } }, saveSettingsDebounced() {} };
+    const doc = dom.window.document;
+    const tidy = createTidy({ document: doc, getContext: () => c, toast() {}, confirm: async () => true });
+    tidy.init();
+    const box = doc.createElement('div'); doc.body.append(box);
+    tidy.render(box);
+    const labels = [...box.querySelectorAll('.tvrm-tidy-check')].map(l => l.textContent);
+    assert.ok(labels.includes('开始新聊天'));
+    assert.ok(labels.includes('关闭聊天')); // 两个里有一个露着
+    assert.ok(!labels.includes('切换面板'));
+    assert.ok(!labels.includes('返回到父级聊天'));
+    assert.ok(labels.includes('看得到'));
+    assert.ok(!labels.includes('藏着的'));
+    assert.ok(!labels.includes('鬼'));
+    assert.match(box.textContent, /还有 2 个现在没出现/);
+});
+
+test('排查信息：列出扩展页每一块的排序和显示方式', async () => {
+    const { doc, tidy } = setup({ on: true });
+    tidy.init();
+    const box = doc.createElement('div'); doc.body.append(box);
+    tidy.render(box);
+    const b = [...box.querySelectorAll('button')].find(x => x.textContent === '复制排查信息');
+    b.click(); await new Promise(r => setTimeout(r, 0));
+    const text = box.querySelector('.tvrm-tidy-diag').value;
+    assert.match(text, /div#extensions_settings\.- 父:/);
+    assert.match(text, /「酒馆你害我不浅」 顺序:/);
+});

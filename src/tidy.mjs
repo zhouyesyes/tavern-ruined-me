@@ -161,13 +161,15 @@ export function createTidy(host) {
     const yantaiOn = () => !!$('yt-interface-active-style');
 
     // —— 读：现在页面上有哪些东西 ——
+    // 现在页面上看得到吗：酒馆自己藏着的（displayNone、只在某些聊天里才出现的）、主题藏掉的都不算；咱们自己藏的算看得到
+    const shown = el => el.classList.contains('tvrm-tidy-gone') || doc.defaultView?.getComputedStyle?.(el)?.display !== 'none';
     function topItems() {
         const root = $('top-settings-holder'); if (!root) return [];
         return [...root.children].flatMap((el, i) => {
             const toggle = el.querySelector(':scope > .drawer-toggle') || (el.matches('.drawer-toggle,button') ? el : null);
             if (!toggle) return [];
             const label = TOP_NAMES[el.id] || toggle.title || toggle.querySelector('[title]')?.title || el.getAttribute('aria-label') || '别的按钮 ' + (i + 1);
-            return [{ key: el.id || 'extra:' + (toggle.id || label), label, el, toggle }];
+            return [{ key: el.id || 'extra:' + (toggle.id || label), label, el, toggle, on: shown(el) && shown(toggle) }];
         });
     }
     function menuItems() {
@@ -175,8 +177,10 @@ export function createTidy(host) {
         const seen = new Set(); const list = [];
         for (const a of box.querySelectorAll('a[id]')) { // 已经收进「更多工具」的也列出来
             if (seen.has(a.id)) continue;
+            // 同一个 id 酒馆里可能有两个（关闭聊天就是一个藏着一个露着），有一个看得到就算
+            const same = [...box.querySelectorAll('a[id]')].filter(x => x.id === a.id);
             seen.add(a.id);
-            list.push({ key: a.id, label: squash(a.querySelector('span')?.textContent || a.textContent) || a.id });
+            list.push({ key: a.id, label: squash(a.querySelector('span')?.textContent || a.textContent) || a.id, on: same.some(shown) });
         }
         return list;
     }
@@ -190,7 +194,7 @@ export function createTidy(host) {
                 if (el.matches('script,style,hr,input,textarea,select') || !el.textContent.trim()) continue;
                 if (el.querySelector('input,textarea,select') && !el.matches('a,button,[role="menuitem"],.list-group-item')) continue;
                 const label = squash(el.querySelector('span')?.textContent || el.textContent || el.title);
-                if (label) list.push({ key: keyOf(el, label, outer.id || 'wand'), label, el, wrap: outer });
+                if (label) list.push({ key: keyOf(el, label, outer.id || 'wand'), label, el, wrap: outer, on: shown(el) && shown(outer) });
             }
         }
         return uniq(list);
@@ -373,6 +377,28 @@ export function createTidy(host) {
         host.on?.('APP_READY', schedule);
         apply();
     }
+    // 扩展页排查：每块的 id、在谁下面、排序、显示方式，复制出来发给 cc（只有插件名字，没有聊天内容）
+    function diag() {
+        const cs = el => doc.defaultView.getComputedStyle(el);
+        const desc = el => el ? `${el.tagName.toLowerCase()}#${el.id || '-'}.${[...el.classList].filter(c => !c.startsWith('tvrm-tidy')).join('.') || '-'}` : '无';
+        const roots = ['extensions_settings', 'extensions_settings2'].map($);
+        const lines = [`酒馆你害我不浅 界面排查 · 开着:${S().on} 一列:${S().foldExt} 砚台在跑:${yantaiOn()} 宽:${doc.defaultView.innerWidth}`];
+        for (const r of roots) lines.push(`${desc(r)} 父:${desc(r?.parentElement)} 显示:${r ? cs(r).display : '-'} 子:${r?.children.length ?? '-'}`);
+        const parent = roots[0]?.parentElement;
+        if (parent) lines.push(`父 显示:${cs(parent).display} 方向:${cs(parent).flexDirection} 行内:${parent.getAttribute('style') || '-'}`);
+        for (const r of roots) for (const el of r?.children || []) {
+            const label = squash(el.querySelector('b,strong')?.textContent || el.textContent).slice(0, 16);
+            lines.push(`${r.id === 'extensions_settings' ? '1' : '2'} ${desc(el)} 「${label}」 顺序:${cs(el).order}/${el.style.getPropertyValue('order') || '-'} 显示:${cs(el).display}`);
+        }
+        return lines.join('\n');
+    }
+    async function copyDiag() {
+        const text = diag();
+        try { await doc.defaultView.navigator.clipboard.writeText(text); toast('success', '复制好了，粘贴发给 cc'); }
+        catch { toast('warning', '没能自动复制，下面框里长按全选复制'); }
+        diagText = text; rerender?.();
+    }
+    let diagText = '';
     function restore() {
         Object.assign(S(), { on: false, hideTop: [], hideWand: [] });
         save(); apply(); rerender?.();
@@ -423,23 +449,28 @@ export function createTidy(host) {
                 const next = fromYantai(yt, st); if (next) { s = { ...next, on: st.on }; save(); apply(); rerender?.(); toast('success', '搬过来了'); }
             }) : null));
 
-        const tops = topItems();
+        // 只列现在看得到的；酒馆自己藏着、只在某些聊天里才出现的不列，底下小字说一声有几个
+        const away = n => n ? h('p', { class: 'tvrm-note' }, `还有 ${n} 个现在没出现（酒馆或主题自己藏着，或者只在某些聊天里才有），没列出来。`) : null;
+        const allTops = topItems(); const tops = allTops.filter(x => x.on);
         const hide = new Set(st.hideTop);
         kids.push(part('top', '顶部按钮', `最上面那排图标 · 藏了 ${tops.filter(t => hide.has(t.key)).length} 个`,
             h('p', { class: 'tvrm-note' }, '勾着＝显示，去掉勾＝藏起来。「扩展」一直留着，不然回不到这里。'),
             tops.length ? h('div', { class: 'tvrm-tidy-grid' }, tops.map(t => check(t.label, !hide.has(t.key), v => change(x => { x.hideTop = flip(x.hideTop, t.key, !v); }), null, t.key === TOP_KEEP))) : h('p', { class: 'tvrm-note' }, '没找到顶栏，可能主题换了结构。'),
+            away(allTops.length - tops.length),
             btn('全部显示', () => change(x => { x.hideTop = []; }))));
 
-        const menu = menuItems();
+        const allMenu = menuItems(); const menu = allMenu.filter(x => x.on);
         kids.push(part('menu', '三横菜单', '输入框左边三条横线 · 勾上的收进「更多工具」',
             check('收起不常用的', st.foldMenu, v => change(x => { x.foldMenu = v; })),
-            menu.length ? h('div', { class: 'tvrm-tidy-grid' }, menu.map(m => check(m.label, st.menuFolded.includes(m.key), v => change(x => { x.menuFolded = flip(x.menuFolded, m.key, v); })))) : h('p', { class: 'tvrm-note' }, '没找到三横菜单。')));
+            menu.length ? h('div', { class: 'tvrm-tidy-grid' }, menu.map(m => check(m.label, st.menuFolded.includes(m.key), v => change(x => { x.menuFolded = flip(x.menuFolded, m.key, v); })))) : h('p', { class: 'tvrm-note' }, '没找到三横菜单。'),
+            away(allMenu.length - menu.length)));
 
-        const wand = wandItems();
+        const allWand = wandItems(); const wand = allWand.filter(x => x.on);
         const whide = new Set(st.hideWand);
         kids.push(part('wand', '魔法棒', `输入框左边的魔法棒 · 认出 ${wand.length} 个入口`,
             h('p', { class: 'tvrm-note' }, '勾着＝显示，去掉勾＝藏起来。别的插件塞进去的也在这里。'),
             wand.length ? h('div', { class: 'tvrm-tidy-grid' }, wand.map(w => check(w.label, !whide.has(w.key), v => change(x => { x.hideWand = flip(x.hideWand, w.key, !v); })))) : h('p', { class: 'tvrm-note' }, '还没认出来。先点开一次魔法棒，再点上面「重新认一遍」。'),
+            away(allWand.length - wand.length),
             btn('全部显示', () => change(x => { x.hideWand = []; }))));
 
         const exts = extItems().filter(e => !e.mine);
@@ -448,7 +479,8 @@ export function createTidy(host) {
             $('extensions_url') ? check('旧的 Extras API 也收起来', st.foldExtras, v => change(x => { x.foldExtras = v; }), '酒馆已经不用它了') : null,
             h('p', { class: 'tvrm-note' }, '勾上＝收进「更多扩展设置」。咱们自己这个面板一直在最上面。'),
             exts.length ? h('div', { class: 'tvrm-tidy-list' }, exts.map(e => check(e.label, st.extFolded.includes(e.key), v => change(x => { x.extFolded = flip(x.extFolded, e.key, v); })))) : h('p', { class: 'tvrm-note' }, '还没认出来。'),
-            h('div', { class: 'tvrm-actions' }, btn('全部放外面', () => change(x => { x.extFolded = []; })), btn('用建议的', () => change(x => { x.extFolded = [...EXT_DEFAULT]; x.extOpen = false; })))));
+            diagText ? h('textarea', { class: 'text_pole tvrm-tidy-diag', rows: '8', readonly: true }, diagText) : null,
+            h('div', { class: 'tvrm-actions' }, btn('复制排查信息', () => copyDiag()), btn('全部放外面', () => change(x => { x.extFolded = []; })), btn('用建议的', () => change(x => { x.extFolded = [...EXT_DEFAULT]; x.extOpen = false; })))));
 
         kids.push(part('user', '用户设置', '很长的几段折起来，搜设置时自动摊开',
             check('折起来', st.foldUser, v => change(x => { x.foldUser = v; })),
