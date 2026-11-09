@@ -13,7 +13,7 @@ export function createApp(host) {
     const timers = host.timers || { setTimeout, clearTimeout };
     const toast = (kind, msg) => host.toast?.(kind, msg);
     let panelRoot = null;
-    let mode = 'world'; // 面板当前标签：world / preset
+    let mode = 'world'; // 面板当前标签：world / preset / api / tidy
     let ready = null;
     let chatPopup = null;
     const openBooks = new Set(); // 面板里展开的书，默认都折叠
@@ -488,7 +488,9 @@ export function createApp(host) {
         const keeper = host.presetKeeper;
         panelRoot.replaceChildren(h('div', { class: 'tvrm-tabs' }, button('世界书', () => { mode = 'world'; renderPanel(); }, 'tvrm-tab' + (mode === 'world' ? ' is-active' : '')),
             keeper ? button('预设', () => { mode = 'preset'; renderPanel(); }, 'tvrm-tab' + (mode === 'preset' ? ' is-active' : '')) : h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, '预设'),
-            host.keyKeeper ? button('API', () => { mode = 'api'; renderPanel(); }, 'tvrm-tab' + (mode === 'api' ? ' is-active' : '')) : h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API')));
+            host.keyKeeper ? button('API', () => { mode = 'api'; renderPanel(); }, 'tvrm-tab' + (mode === 'api' ? ' is-active' : '')) : h('button', { type: 'button', disabled: true, class: 'tvrm-tab is-disabled' }, 'API'),
+            host.tidy ? button('界面', () => { mode = 'tidy'; renderPanel(); }, 'tvrm-tab' + (mode === 'tidy' ? ' is-active' : '')) : null));
+        if (mode === 'tidy' && host.tidy) { const box = h('div', { class: 'tvrm-tidy' }); panelRoot.append(box); host.tidy.render(box); return; }
         if (mode === 'preset' && keeper) { const box = h('div', { class: 'tvrm-presets' }); panelRoot.append(box); keeper.render(box); return; }
         if (mode === 'api' && host.keyKeeper) { const box = h('div', { class: 'tvrm-keys' }); panelRoot.append(box); host.keyKeeper.render(box); return; }
         const chatOn = hasChat();
