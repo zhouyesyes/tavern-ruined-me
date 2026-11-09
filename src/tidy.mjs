@@ -73,8 +73,6 @@ const CSS = `
 .tvrm-tidy-more{border-top:1px solid var(--SmartThemeBorderColor,#7775);margin-top:4px;padding-top:2px}
 .tvrm-tidy-dots{display:flex!important;justify-content:center;align-items:center;cursor:pointer;padding:4px 0!important;opacity:.7}
 .tvrm-tidy-dots.is-open{opacity:1}
-.tvrm-tidy-dots i{transition:transform .2s}
-.tvrm-tidy-dots.is-open i{transform:rotate(90deg)}
 .tvrm-tidy-more-list{display:flex;flex-direction:column;font-size:.88em}
 .tvrm-tidy-more-list[hidden]{display:none!important}
 .tvrm-tidy-topmore{display:flex;align-items:center;cursor:pointer}
