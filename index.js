@@ -41,7 +41,18 @@ const chatInfo = () => {
     const who = c.groupId ? 'g:' + c.groupId : 'c:' + (c.characters?.[c.characterId]?.avatar ?? c.characterId);
     return { key: who + '|' + c.chatId, label: (c.groupId ? c.groups?.find(g => String(g.id) === String(c.groupId))?.name : c.characters?.[c.characterId]?.name) + ' · ' + c.chatId };
 };
+// 排查用：这个角色现在有哪些聊天。照酒馆「聊天记录」那个窗口：POST /api/characters/chats，
+// 回来是聊天文件列表（{ file_name: 'xxx.jsonl' }）；一个聊天都没有时酒馆回 { error: true }；请求失败就当查不了（返回 null）
+async function listChats(avatar) {
+    const res = await fetch('/api/characters/chats', { method: 'POST', headers: getContext().getRequestHeaders(), body: JSON.stringify({ avatar_url: avatar, simple: true }) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && !Array.isArray(data) && data.error) return new Set();
+    const list = Array.isArray(data) ? data : Object.values(data || {});
+    return new Set(list.map(x => String(x?.file_name ?? x ?? '').replace(/\.jsonl$/i, '')).filter(Boolean));
+}
 const presetKeeper = createPresetKeeper({
+    listChats,
     document,
     getContext,
     chatInfo,
@@ -104,6 +115,8 @@ const app = createApp({
     keyKeeper,
     document,
     getContext,
+    listChats,
+    confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
     worldNames: () => world_names,
     bindings: () => ({ global: selected_world_info, charLore: world_info.charLore }),
     loadWorldInfo,
@@ -125,8 +138,10 @@ jQuery(() => {
     // 酒馆里删了聊天：预设格里这个聊天记着的也一起删（她 11/9 要的；开关在预设格最上面）。
     // 删聊天的事件只带聊天名，删的一定是当前角色 / 群聊的聊天，用当前的「谁」拼回 key
     const whoNow = () => { const c = getContext(); return c.groupId ? 'g:' + c.groupId : 'c:' + (c.characters?.[c.characterId]?.avatar ?? c.characterId); };
-    if (event_types.CHAT_DELETED) eventSource.on(event_types.CHAT_DELETED, name => presetKeeper.onChatDeleted(whoNow() + '|' + name));
-    if (event_types.GROUP_CHAT_DELETED) eventSource.on(event_types.GROUP_CHAT_DELETED, name => presetKeeper.onChatDeleted(whoNow() + '|' + name));
+    // 世界书格同样：她 11/9 又要的，开关在世界书格「所有聊天」上面
+    const gone = name => { const key = whoNow() + '|' + name; presetKeeper.onChatDeleted(key); app.onChatDeleted(key); };
+    if (event_types.CHAT_DELETED) eventSource.on(event_types.CHAT_DELETED, gone);
+    if (event_types.GROUP_CHAT_DELETED) eventSource.on(event_types.GROUP_CHAT_DELETED, gone);
     // 在预设页拨开关、拖顺序、换预设：酒馆没有专门事件，借预设页上的操作和预设变更事件来记
     for (const type of [event_types.OAI_PRESET_CHANGED_AFTER, event_types.SETTINGS_UPDATED]) if (type) eventSource.on(type, presetKeeper.onPresetEvent);
     document.addEventListener('click', e => { if (e.target.closest?.('#completion_prompt_manager')) setTimeout(presetKeeper.onPresetEvent, 300); });

@@ -1,5 +1,5 @@
 // 预设格：每个聊天记自己用的预设、条目开关和顺序。全部自己写。
-import { renderChatGroups, chatOf } from './chatGroups.mjs';
+import { renderChatGroups, renderSweep, chatOf } from './chatGroups.mjs';
 // 切聊天时先上锁：读出这个聊天自己的配置 → 换回预设、写回开关和顺序 → 等写完才解锁；
 // 上锁期间的任何变化都不记，插件自己写回造成的变化也不记（和世界书同一套做法）。
 
@@ -205,6 +205,9 @@ export function createPresetKeeper(host) {
         const sw = h('input', { type: 'checkbox', checked: autoForget() }); sw.checked = autoForget();
         sw.addEventListener('change', () => { store().autoForget = sw.checked; save(); });
         container.append(h('label', { class: 'checkbox_label tvrm-autoforget' }, sw, '删聊天时，这里记着的预设也一起删'));
+        // 排查：以前删掉的聊天（开关打开之前删的、或者没走酒馆删的），预设记录还在的，列出来勾选着删
+        if (host.listChats) container.append(renderSweep({ h, c: ctx, keys: () => Object.keys(store().chats), hereKey: () => cur()?.key, listChats: host.listChats, what: '预设记录',
+            onDelete: keys => { const all = store().chats; for (const k of keys) if (k !== cur()?.key) { delete all[k]; open.delete(k); } save(); toast('success', `删掉了 ${keys.length} 个聊天的预设记录`); rerender?.(); } }));
         // 按角色分折叠（小头像），当前聊天所在的角色在最前；每个聊天一行聊天名、一行预设名
         container.append(renderChatGroups({ h, c: ctx(), keys, hereKey: here, open, prefix: 'preset', title: '预设格',
             renderChat: key => {
