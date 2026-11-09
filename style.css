@@ -321,3 +321,18 @@ details.tvrm-lv1 > summary { padding: 6px 0 5px; }
 .tvrm-sweep-result { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
 .tvrm-sweep-row { font-size: .9em; }
 .tvrm-sweep-note { opacity: .7; }
+
+/* 界面格 */
+.tvrm-tidy { display: flex; flex-direction: column; gap: 8px; }
+.tvrm-tidy-part > summary { list-style: none; cursor: pointer; }
+.tvrm-tidy-part > summary::-webkit-details-marker { display: none; }
+.tvrm-tidy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.tvrm-tidy-list { display: flex; flex-direction: column; }
+.tvrm-tidy-check { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; margin: 0; min-width: 0; }
+.tvrm-tidy-check input { flex: 0 0 auto; margin-top: .2em; }
+.tvrm-tidy-check > span { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.tvrm-tidy-check small { color: var(--tvrm-dim); font-size: .8em; }
+.tvrm-tidy-check.is-disabled { opacity: .6; }
+.tvrm-tidy-warn { margin: 0; padding: 8px 10px; border: 1px solid var(--tvrm-accent); border-radius: 8px; }
+.tvrm-tidy .tvrm-actions .menu_button { width: auto; white-space: nowrap; }
+@media (max-width: 420px) { .tvrm-tidy-grid { grid-template-columns: 1fr; } }

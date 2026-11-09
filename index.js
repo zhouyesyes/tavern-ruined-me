@@ -1,4 +1,4 @@
-// 酒馆你害我不浅 —— 入口。三格：世界书 / 预设 / API，共用「跟着聊天走」。
+// 酒馆你害我不浅 —— 入口。四格：世界书 / 预设 / API 共用「跟着聊天走」；界面格整理酒馆界面。
 import { eventSource, event_types } from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
 import { world_names, selected_world_info, world_info, loadWorldInfo, saveWorldInfo } from '../../../world-info.js';
@@ -7,6 +7,7 @@ import { createApp } from './src/ui.mjs';
 import { createPresetKeeper } from './src/preset.mjs';
 import { createKeyKeeper } from './src/keysUI.mjs';
 import { parseModels, normalizeUrl } from './src/keys.mjs';
+import { createTidy } from './src/tidy.mjs';
 // 整个模块一起导入，按名字去取：酒馆旧一点、少导出一个名字时，插件照样能加载（逐个 import 少一个就整个插件加载失败、从扩展列表里消失）
 import * as oai from '../../../openai.js';
 
@@ -109,7 +110,17 @@ const keyKeeper = createKeyKeeper({
     },
 });
 
+// 界面格：把不常用的按钮和设置收起来（照砚台 · 界面整理的功能自己写的）
+const tidy = createTidy({
+    document,
+    getContext,
+    toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
+    confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
+    on: (name, fn) => { if (event_types[name]) eventSource.on(event_types[name], fn); },
+});
+
 const app = createApp({
+    tidy,
     chatInfo,
     presetKeeper,
     keyKeeper,
@@ -132,6 +143,7 @@ const app = createApp({
 
 jQuery(() => {
     app.init();
+    tidy.init(); // 在面板挂上之后：扩展页排序要认得出咱们自己的面板
     keyKeeper.initFill();
     presetKeeper.onChatChanged();
     eventSource.on(event_types.CHAT_CHANGED, presetKeeper.onChatChanged);
