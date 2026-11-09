@@ -5,7 +5,7 @@ import {
     resolveEntry, snapshotBook, bookMeta, planWriteBack, createDebouncer,
     entryLabel, entrySub, boundBookNames, bindingKinds, reconcileBook, isClassified,
 } from './core.mjs';
-import { renderChatGroups, chatOf } from './chatGroups.mjs';
+import { renderChatGroups, renderSweep, chatOf } from './chatGroups.mjs';
 
 export function createApp(host) {
     const doc = host.document;
@@ -497,6 +497,14 @@ export function createApp(host) {
         const index = settings().world.index; const here = host.chatInfo?.()?.key;
         if (chatOn && here && !index[here]) noteIndex();
         const keys = Object.keys(index);
+        if (keys.length) {
+            // 开关：酒馆里删聊天时，这里记着的世界书开关一起删；排查：以前删掉的聊天还留着记录的，勾选着删
+            const sw = h('input', { type: 'checkbox', checked: worldAutoForget() }); sw.checked = worldAutoForget();
+            sw.addEventListener('change', () => { settings().world.autoForget = sw.checked; saveSettings(); });
+            panelRoot.append(h('label', { class: 'checkbox_label tvrm-autoforget' }, sw, '删聊天时，这里记着的世界书开关也一起删'));
+            if (host.listChats) panelRoot.append(renderSweep({ h, c: ctx, keys: () => Object.keys(settings().world.index), hereKey: () => host.chatInfo?.()?.key, listChats: host.listChats, what: '世界书记录',
+                onDelete: list => { dropWorld(list); toast('success', `删掉了 ${list.length} 个聊天的世界书记录`); renderPanel(); } }));
+        }
         if (keys.length) panelRoot.append(renderChatGroups({ h, c: ctx(), keys, hereKey: chatOn ? here : null, open: openChats, prefix: 'world', title: '所有聊天',
             renderChat: (key, isHere) => isHere ? hereChat(key, t) : otherChat(key) }));
         // 第二块：酒馆里所有世界书，外面一个大折叠（默认收起），里面一本一本也默认收起
@@ -589,7 +597,28 @@ export function createApp(host) {
             book.append(list); body.append(book);
         }
         if (!Object.keys(books).length) body.append(h('p', { class: 'tvrm-empty' }, '这个聊天没有绑定世界书'));
+        body.append(h('div', { class: 'tvrm-set-actions' }, button('删掉这个聊天的世界书记录', () => forgetWorld(key), 'tvrm-delete')));
         d.append(body); return d;
+    }
+    // 删掉某些聊天记着的世界书开关（只是面板里的抄本；聊天删了，聊天自己的那份也就没了）。当前聊天不删：一删又会马上记一份
+    const worldAutoForget = () => settings().world.autoForget !== false;
+    function dropWorld(keys) {
+        const index = settings().world.index, here = host.chatInfo?.()?.key;
+        let n = 0;
+        for (const k of keys) if (k !== here && index[k]) { delete index[k]; openChats.delete('chat:' + k); n++; }
+        if (n) saveSettings();
+        return n;
+    }
+    async function forgetWorld(key) {
+        if (key === host.chatInfo?.()?.key) { toast('info', '这是正在用的聊天，删了也会马上重新记一份；先切到别的聊天再删'); return; }
+        if (!await host.confirm?.(`删掉「${chatOf(key)}」记着的世界书开关？（不影响世界书本身）`)) return;
+        dropWorld([key]); renderPanel();
+    }
+    // 酒馆里删了聊天：开着开关时一起删
+    function onChatDeleted(key) {
+        if (!worldAutoForget() || !key) return false;
+        const n = dropWorld([key]); if (n) renderPanel();
+        return n > 0;
     }
     function mountPanel() {
         const target = doc.getElementById('extensions_settings2') || doc.getElementById('extensions_settings');
@@ -637,5 +666,5 @@ export function createApp(host) {
         settings(); mountPanel(); watchNative();
         return onChatChanged();
     }
-    return { init, onChatChanged, onChatCreated, onWorldChanged, onEntriesLoaded, settings, mountPanel, flushWriteBack, scheduleWriteBack, syncNative, renderPanel, whenIdle: () => queue };
+    return { init, onChatChanged, onChatCreated, onChatDeleted, forgetWorld, onWorldChanged, onEntriesLoaded, settings, mountPanel, flushWriteBack, scheduleWriteBack, syncNative, renderPanel, whenIdle: () => queue };
 }

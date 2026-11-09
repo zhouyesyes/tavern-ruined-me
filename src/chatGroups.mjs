@@ -52,3 +52,55 @@ export function renderChatGroups({ h, c, keys, hereKey, open, prefix, title, ren
     }
     return all;
 }
+
+// 排查：记着的聊天里，哪些在酒馆里已经删了（世界书格和预设格共用）
+// listChats(头像文件名) → 这个角色现在有的聊天名 Set；查不了返回 null（这个角色就先不动）
+// 返回 { gone: [key], unsure: 查不了的角色数 }；当前聊天永远不算
+export async function findGone(c, keys, hereKey, listChats) {
+    const gone = []; let unsure = 0;
+    const byWho = new Map();
+    for (const key of keys) if (key !== hereKey) (byWho.get(whoOf(key)) ?? byWho.set(whoOf(key), []).get(whoOf(key))).push(key);
+    for (const [who, list] of byWho) {
+        let have = null;
+        if (who.startsWith('g:')) {
+            const g = (c.groups || []).find(x => 'g:' + x.id === who);
+            if (!g) { if ((c.groups || []).length) have = new Set(); } // 群聊整个删了
+            else if (Array.isArray(g.chats)) have = new Set(g.chats.map(String));
+        } else {
+            const file = who.slice(2);
+            const known = (c.characters || []).length > 0;
+            if (known && !(c.characters || []).some(x => x.avatar === file)) have = new Set(); // 角色整个删了
+            else if (known) { try { have = await listChats(file); } catch { have = null; } }
+        }
+        if (!have) { unsure++; continue; }
+        for (const key of list) if (!have.has(chatOf(key))) gone.push(key);
+    }
+    return { gone, unsure };
+}
+
+// 排查的那一块：一个按钮，点了列出已经删掉的聊天（默认全勾上），勾完点「删掉选中的」
+// what：在删什么（「预设记录」「世界书记录」）；onDelete(keys) 真的去删
+export function renderSweep({ h, c, keys, hereKey, listChats, what, onDelete }) {
+    const box = h('div', { class: 'tvrm-sweep' });
+    const result = h('div', { class: 'tvrm-sweep-result' });
+    const run = async () => {
+        result.replaceChildren(h('small', null, '在查……'));
+        const { gone, unsure } = await findGone(c(), keys(), hereKey(), listChats);
+        const note = unsure ? h('small', { class: 'tvrm-sweep-note' }, `有 ${unsure} 个角色查不了（酒馆没给聊天列表），先不动它们`) : null;
+        if (!gone.length) { result.replaceChildren(h('small', null, '没有找到已经删掉的聊天'), note || ''); return; }
+        const picks = gone.map(key => {
+            const cb = h('input', { type: 'checkbox', checked: true }); cb.checked = true;
+            return { key, cb, row: h('label', { class: 'checkbox_label tvrm-sweep-row' }, cb, h('span', null, `${whoInfo(c(), whoOf(key)).name} · ${chatOf(key)}`)) };
+        });
+        const del = h('button', { type: 'button', class: 'menu_button tvrm-delete' }, `删掉选中的${what}`);
+        del.addEventListener('click', async () => {
+            const sel = picks.filter(p => p.cb.checked).map(p => p.key);
+            if (!sel.length) return;
+            await onDelete(sel);
+            result.replaceChildren(h('small', null, `删掉了 ${sel.length} 个聊天的${what}`));
+        });
+        result.replaceChildren(h('small', null, `这些聊天在酒馆里已经删了（${gone.length} 个），${what}还在：`), ...picks.map(p => p.row), note || '', h('div', { class: 'tvrm-set-actions' }, del));
+    };
+    box.append(h('button', { type: 'button', class: 'menu_button tvrm-sweep-btn', onclick: run }, '排查：找出已经删掉的聊天'), result);
+    return box;
+}

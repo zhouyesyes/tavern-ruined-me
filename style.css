@@ -315,3 +315,9 @@ details.tvrm-lv1 > summary { padding: 6px 0 5px; }
 .tvrm-key-sheet button.tvrm-key-pick { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 6px 8px; border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 6px; }
 .tvrm-key-sheet button.tvrm-key-pick small { display: block; opacity: .75; overflow-wrap: anywhere; }
 .tvrm-key-sheet .tvrm-key-sheet-head button { margin: 0; display: inline-block; }
+/* 排查已经删掉的聊天 */
+.tvrm-sweep { margin: 4px 0 8px; }
+.tvrm-sweep-btn.menu_button { width: auto; margin: 0; padding: 4px 10px; font-size: .85em; }
+.tvrm-sweep-result { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.tvrm-sweep-row { font-size: .9em; }
+.tvrm-sweep-note { opacity: .7; }
