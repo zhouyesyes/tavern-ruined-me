@@ -336,3 +336,4 @@ details.tvrm-lv1 > summary { padding: 6px 0 5px; }
 .tvrm-tidy-warn { margin: 0; padding: 8px 10px; border: 1px solid var(--tvrm-accent); border-radius: 8px; }
 .tvrm-tidy .tvrm-actions .menu_button { width: auto; white-space: nowrap; }
 @media (max-width: 420px) { .tvrm-tidy-grid { grid-template-columns: 1fr; } }
+.tvrm-tidy-diag { width: 100%; box-sizing: border-box; font-size: .75em; font-family: monospace; }

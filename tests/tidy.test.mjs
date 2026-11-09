@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
-import { createTidy, normalizeTidy, fromYantai, TIDY, TOP_KEEP } from '../src/tidy.mjs';
+import { createTidy, normalizeTidy, TIDY } from '../src/tidy.mjs';
 
 // 照酒馆 index.html 的结构摘的一小块
 const PAGE = `<div id="top-bar"></div>
@@ -58,10 +58,11 @@ function setup(saved, extra = '') {
 }
 const gone = el => el.classList.contains('tvrm-tidy-gone');
 
-test('设置整理：默认不开；「扩展」按钮不能藏', () => {
-    const s = normalizeTidy({ hideTop: ['backgrounds-button', TOP_KEEP], on: 'yes' });
+test('设置整理：默认不开；扩展程序图标也能收', () => {
+    const s = normalizeTidy({ hideTop: ['backgrounds-button', 'extensions-settings-button'], on: 'yes' });
     assert.equal(s.on, false);
-    assert.deepEqual(s.hideTop, ['backgrounds-button']);
+    assert.equal(s.topOpen, false);
+    assert.deepEqual(s.hideTop, ['backgrounds-button', 'extensions-settings-button']);
     assert.ok(s.menuFolded.includes('option_toggle_AN'));
     assert.deepEqual(normalizeTidy(null).hideWand, []);
 });
@@ -78,19 +79,33 @@ test('开了：顶部按钮、三横菜单、魔法棒、扩展页、用户设�
         extFolded: ['id:assets_container', 'id:tvrm-drawer'] });
     const before = doc.body.innerHTML;
     tidy.init();
-    // 顶部：背景藏了，扩展不藏
+    // 顶栏：背景收进最右边的 «，点开往左展开（排在折叠左边）
+    const topFold = doc.querySelector('#top-settings-holder > .tvrm-tidy-topmore');
+    assert.ok(topFold);
+    assert.equal(topFold.style.getPropertyValue('order'), '9999');
     assert.ok(gone(doc.querySelector('#backgrounds-button > .drawer-toggle')));
     assert.ok(doc.getElementById('backgrounds-button').classList.contains('tvrm-tidy-slim'));
+    assert.equal(doc.getElementById('backgrounds-button').style.getPropertyValue('order'), '9998');
     assert.ok(!gone(doc.querySelector('#ai-config-button > .drawer-toggle')));
-    // 三横菜单：作者注释、CFG、AI 帮答收进「更多工具」，新聊天留在外面
+    topFold.click();
+    assert.ok(!gone(doc.querySelector('#backgrounds-button > .drawer-toggle')));
+    assert.ok(topFold.classList.contains('is-open'));
+    topFold.click();
+    assert.ok(gone(doc.querySelector('#backgrounds-button > .drawer-toggle')));
+    // 选项菜单：作者注释、CFG、AI 帮答收进最下面的 ⋯（只有图标没有字），新聊天留在外面
     const more = doc.querySelector('#options .tvrm-tidy-more-list');
     assert.deepEqual([...more.children].map(a => a.id), ['option_toggle_AN', 'option_toggle_CFG', 'option_impersonate']);
     assert.ok(more.hidden);
+    assert.equal(doc.querySelector('#options .tvrm-tidy-dots').textContent, '');
     assert.equal(doc.getElementById('option_start_new_chat').parentElement.className, 'options-content');
-    // 魔法棒：一组全藏了，组也藏；没藏的照旧
-    assert.ok(gone(doc.getElementById('third_party')));
+    // 扩展菜单：收进 ⋯；一组全收走了，留下的空盒子藏起来；没收的照旧
+    const wandMore = doc.querySelector('#extensionsMenu .tvrm-tidy-more-list');
+    assert.deepEqual([...wandMore.children].map(e => e.textContent), ['朗读', '停止朗读', '小手机']);
+    assert.ok(wandMore.hidden);
     assert.ok(gone(doc.getElementById('tts_wand_container')));
     assert.ok(!gone(doc.getElementById('sd_wand_container')));
+    doc.querySelector('#extensionsMenu .tvrm-tidy-dots').click();
+    assert.ok(!wandMore.hidden);
     // 扩展页：一列；咱们的面板在最上面不能收；Assets 收进「更多」；空容器藏掉；Extras API 也收
     const order = id => Number(doc.getElementById(id).style.getPropertyValue('order'));
     assert.equal(doc.getElementById('extensions_settings').style.getPropertyValue('display'), 'contents');
@@ -102,10 +117,10 @@ test('开了：顶部按钮、三横菜单、魔法棒、扩展页、用户设�
     assert.ok(gone(doc.getElementById('sd_container')));
     assert.ok(gone(doc.querySelector('.extras-row')));
     const head = doc.querySelector('#extensions_settings > .tvrm-tidy-fold');
-    assert.match(head.textContent, /更多扩展设置（2）/);
+    assert.match(head.textContent, /收起的扩展程序（2）/);
     // 用户设置：两段折起来
     assert.ok(gone(doc.querySelector('[name="themeElements"] > div:not(.tvrm-tidy-fold)')));
-    // 点开「更多扩展设置」：原地展开（不重排整页），收着的那几个挂上「小一号、淡底色」，底下多一个「收起」
+    // 点开「收起的扩展程序」：原地展开（不重排整页），收着的那几个挂上「小一号、淡底色」，底下多一个「收起」
     const tail = doc.querySelector('.tvrm-tidy-more-tail');
     assert.ok(gone(tail));
     head.click();
@@ -144,46 +159,82 @@ test('砚台界面整理还开着：先不动，面板上提醒', () => {
     assert.ok(!gone(doc.querySelector('#backgrounds-button > .drawer-toggle')));
     const box = doc.createElement('div'); doc.body.append(box);
     tidy.render(box);
-    assert.match(box.textContent, /砚台 · 界面整理还开着/);
+    assert.match(box.textContent, /砚台 · 界面整理」还在运行/);
 });
 
-test('面板：勾掉顶部按钮就藏；恢复原界面全部放出来', async () => {
+test('面板：勾上顶栏图标就收起；名字用图标自己的提示字；恢复原界面后勾选还留着', async () => {
     const { doc, tidy, c } = setup({ on: true });
     tidy.init();
     const box = doc.createElement('div'); doc.body.append(box);
     tidy.render(box);
-    const label = [...box.querySelectorAll('.tvrm-tidy-check')].find(l => l.textContent.startsWith('背景'));
+    const label = [...box.querySelectorAll('.tvrm-tidy-check')].find(l => l.textContent === 'Backgrounds');
     const input = label.querySelector('input');
-    input.checked = false; input.dispatchEvent(new doc.defaultView.Event('change'));
+    assert.equal(input.checked, false);
+    input.checked = true; input.dispatchEvent(new doc.defaultView.Event('change'));
     assert.deepEqual(c.extensionSettings[TIDY].hideTop, ['backgrounds-button']);
     assert.ok(gone(doc.querySelector('#backgrounds-button > .drawer-toggle')));
-    // 扩展按钮那格是灰的，不能点
-    const ext = [...box.querySelectorAll('.tvrm-tidy-check')].find(l => l.textContent.startsWith('扩展'));
-    assert.ok(ext.querySelector('input').disabled);
     tidy.restore();
     assert.ok(!gone(doc.querySelector('#backgrounds-button > .drawer-toggle')));
+    assert.equal(doc.querySelector('.tvrm-tidy-topmore'), null);
     assert.equal(c.extensionSettings[TIDY].on, false);
+    assert.deepEqual(c.extensionSettings[TIDY].hideTop, ['backgrounds-button']);
 });
 
-test('后加进来的魔法棒入口也会被认出来、按设置藏', async () => {
+test('扩展菜单收进 ⋯ 的，面板里照样列着、勾着', () => {
+    const { doc, tidy } = setup({ on: true, hideWand: ['tts_wand_container:朗读'] });
+    tidy.init();
+    const box = doc.createElement('div'); doc.body.append(box);
+    tidy.render(box);
+    const l = [...box.querySelectorAll('.tvrm-tidy-check')].find(x => x.textContent === '朗读');
+    assert.ok(l && l.querySelector('input').checked);
+    assert.equal([...box.querySelectorAll('.tvrm-tidy-check')].filter(x => x.textContent === '朗读').length, 1);
+});
+
+test('后加进来的魔法棒入口也会被认出来、按设置收起', async () => {
     const { doc, tidy } = setup({ on: true, hideWand: ['id:late'] });
     tidy.init();
     const el = doc.createElement('div'); el.id = 'late'; el.className = 'list-group-item'; el.innerHTML = '<span>后来的</span>';
     doc.getElementById('extensionsMenu').append(el);
     await new Promise(r => setTimeout(r, 0));
-    assert.ok(gone(el));
+    assert.equal(el.parentElement.className, 'tvrm-tidy-more-list');
 });
 
-test('搬砚台里的选择', () => {
-    const mine = normalizeTidy({});
-    const next = fromYantai({ hiddenTop: ['WI-SP-button'], foldedTools: ['option_toggle_AN'], hiddenWand: ['id:x'], foldedExtensions: ['id:sd_container'],
-        foldedUserSections: ['theme', 'chat'], extensionOrder: ['id:a', 'id:b'], foldMenu: false }, mine);
-    assert.deepEqual(next.hideTop, ['WI-SP-button']);
-    assert.deepEqual(next.menuFolded, ['option_toggle_AN']);
-    assert.equal(next.foldMenu, false);
-    assert.deepEqual(next.hideWand, ['id:x']);
-    assert.deepEqual(next.extFolded, ['id:sd_container']);
-    assert.deepEqual(next.userFolded, ['theme', 'chat']);
-    assert.deepEqual(next.extSeen, ['id:a', 'id:b']);
-    assert.equal(fromYantai(null, mine), null);
+test('酒馆自己藏着的不列出来（displayNone、只在某些聊天里才出现的）', () => {
+    const dom = new JSDOM(`<head><style>.displayNone{display:none}</style></head><body>
+        <div id="top-settings-holder"><div id="ai-config-button" class="drawer"><div class="drawer-toggle"></div></div><div id="ghost" class="drawer" style="display:none"><div class="drawer-toggle" title="鬼"></div></div></div>
+        <div id="extensionsMenu"><div class="list-group-item"><span>看得到</span></div><div class="list-group-item displayNone"><span>藏着的</span></div></div>
+        <div id="options"><div class="options-content">
+            <a id="option_close_chat" class="displayNone"><span>关闭聊天</span></a>
+            <a id="option_settings" class="displayNone"><span>切换面板</span></a>
+            <a id="option_back_to_main" style="display: none;"><span>返回到父级聊天</span></a>
+            <a id="option_start_new_chat"><span>开始新聊天</span></a>
+            <a id="option_close_chat"><span>关闭聊天</span></a>
+        </div></div></body>`);
+    const c = { extensionSettings: { [TIDY]: { on: true } }, saveSettingsDebounced() {} };
+    const doc = dom.window.document;
+    const tidy = createTidy({ document: doc, getContext: () => c, toast() {}, confirm: async () => true });
+    tidy.init();
+    const box = doc.createElement('div'); doc.body.append(box);
+    tidy.render(box);
+    const labels = [...box.querySelectorAll('.tvrm-tidy-check')].map(l => l.textContent);
+    assert.ok(labels.includes('开始新聊天'));
+    assert.ok(labels.includes('关闭聊天')); // 两个里有一个露着
+    assert.ok(!labels.includes('切换面板'));
+    assert.ok(!labels.includes('返回到父级聊天'));
+    assert.ok(labels.includes('看得到'));
+    assert.ok(!labels.includes('藏着的'));
+    assert.ok(!labels.includes('鬼'));
+    assert.match(box.textContent, /另有 2 项现在没显示/);
+});
+
+test('排查信息：列出扩展页每一块的排序和显示方式', async () => {
+    const { doc, tidy } = setup({ on: true });
+    tidy.init();
+    const box = doc.createElement('div'); doc.body.append(box);
+    tidy.render(box);
+    const b = [...box.querySelectorAll('button')].find(x => x.textContent === '复制排查信息');
+    b.click(); await new Promise(r => setTimeout(r, 0));
+    const text = box.querySelector('.tvrm-tidy-diag').value;
+    assert.match(text, /div#extensions_settings\.- 父:/);
+    assert.match(text, /「酒馆你害我不浅」 顺序:/);
 });
