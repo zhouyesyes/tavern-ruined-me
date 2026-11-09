@@ -180,11 +180,31 @@ export function createPresetKeeper(host) {
             h('button', { type: 'button', class: 'menu_button tvrm-delete', onclick: async () => { if (await host.confirm?.(`删除「${item.name}」？`)) { deleteSave(chat, item.id); save(); rerender?.(); } } }, '删除')));
         return d;
     }
+    // 删掉某个聊天记着的预设（聊天删了、或者不想要了）。当前聊天不能删：一删进来又会重新记一份
+    async function forget(key, ask = true) {
+        const chats = store().chats; if (!chats[key]) return false;
+        if (key === cur()?.key) { toast('info', '这是正在用的聊天，删了也会马上重新记一份；先切到别的聊天再删'); return false; }
+        if (ask && !await host.confirm?.(`删掉「${chatOf(key)}」记着的预设和 ${chats[key].saves.length} 套存档？（不影响酒馆里的预设本身）`)) return false;
+        delete chats[key]; open.delete(key); save(); rerender?.();
+        return true;
+    }
+    // 酒馆里删了聊天：开着「跟聊天一起删」时，这个聊天记着的预设也一起删
+    const autoForget = () => store().autoForget !== false;
+    function onChatDeleted(key) {
+        const chats = store().chats;
+        if (!autoForget() || !key || !chats[key] || key === cur()?.key) return false;
+        delete chats[key]; open.delete(key); save(); rerender?.();
+        return true;
+    }
     function render(container) {
         rerender = () => render(container);
         const chats = store().chats; const keys = Object.keys(chats); const here = cur()?.key;
         container.replaceChildren();
         if (!keys.length) return; // 没有内容就什么都不放
+        // 开关：酒馆里删聊天时，这里记着的预设一起删
+        const sw = h('input', { type: 'checkbox', checked: autoForget() }); sw.checked = autoForget();
+        sw.addEventListener('change', () => { store().autoForget = sw.checked; save(); });
+        container.append(h('label', { class: 'checkbox_label tvrm-autoforget' }, sw, '删聊天时，这里记着的预设也一起删'));
         // 按角色分折叠（小头像），当前聊天所在的角色在最前；每个聊天一行聊天名、一行预设名
         container.append(renderChatGroups({ h, c: ctx(), keys, hereKey: here, open, prefix: 'preset', title: '预设格',
             renderChat: key => {
@@ -196,8 +216,9 @@ export function createPresetKeeper(host) {
                 const body = h('div', { class: 'tvrm-card-body' });
                 body.append(setCard(chat, '在用', chat.active, true, key));
                 for (const s of chat.saves) body.append(setCard(chat, s.name, s, false, key));
+                if (key !== here) body.append(h('div', { class: 'tvrm-set-actions' }, h('button', { type: 'button', class: 'menu_button tvrm-delete', onclick: () => forget(key) }, '删掉这个聊天的预设记录')));
                 d.append(body); return d;
             } }));
     }
-    return { onChatChanged, onPresetEvent, render, whenIdle: () => queue, store, doSwitch };
+    return { onChatChanged, onPresetEvent, onChatDeleted, forget, render, whenIdle: () => queue, store, doSwitch };
 }

@@ -122,6 +122,11 @@ jQuery(() => {
     keyKeeper.initFill();
     presetKeeper.onChatChanged();
     eventSource.on(event_types.CHAT_CHANGED, presetKeeper.onChatChanged);
+    // 酒馆里删了聊天：预设格里这个聊天记着的也一起删（她 11/9 要的；开关在预设格最上面）。
+    // 删聊天的事件只带聊天名，删的一定是当前角色 / 群聊的聊天，用当前的「谁」拼回 key
+    const whoNow = () => { const c = getContext(); return c.groupId ? 'g:' + c.groupId : 'c:' + (c.characters?.[c.characterId]?.avatar ?? c.characterId); };
+    if (event_types.CHAT_DELETED) eventSource.on(event_types.CHAT_DELETED, name => presetKeeper.onChatDeleted(whoNow() + '|' + name));
+    if (event_types.GROUP_CHAT_DELETED) eventSource.on(event_types.GROUP_CHAT_DELETED, name => presetKeeper.onChatDeleted(whoNow() + '|' + name));
     // 在预设页拨开关、拖顺序、换预设：酒馆没有专门事件，借预设页上的操作和预设变更事件来记
     for (const type of [event_types.OAI_PRESET_CHANGED_AFTER, event_types.SETTINGS_UPDATED]) if (type) eventSource.on(type, presetKeeper.onPresetEvent);
     document.addEventListener('click', e => { if (e.target.closest?.('#completion_prompt_manager')) setTimeout(presetKeeper.onPresetEvent, 300); });
