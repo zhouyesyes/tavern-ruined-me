@@ -5,23 +5,22 @@
 
 export const TIDY = 'tavern_ruined_me_tidy';
 
-// 顶部按钮：酒馆自带那几个的中文名（别的插件加的按钮用它自己的 title）
+// 顶栏图标的名字：先用页面上图标自己的提示字（酒馆按你选的语言翻译好的），没有才用这里（酒馆官方中文翻译）
 export const TOP_NAMES = {
-    'ai-config-button': '预设 / 回复参数', 'sys-settings-button': 'API 连接', 'advanced-formatting-button': '回复格式',
-    'WI-SP-button': '世界书', 'user-settings-button': '用户设置', 'backgrounds-button': '背景',
-    'extensions-settings-button': '扩展', 'persona-management-button': '用户人设', 'rightNavHolder': '角色卡',
+    'ai-config-button': 'AI 响应配置', 'sys-settings-button': 'API 连接', 'advanced-formatting-button': 'AI 回复格式化',
+    'WI-SP-button': '世界书', 'user-settings-button': '用户设置', 'backgrounds-button': '更改背景图片',
+    'extensions-settings-button': '扩展程序', 'persona-management-button': '用户设定管理', 'rightNavHolder': '角色管理',
 };
-// 扩展按钮不让藏：咱们这个面板就在扩展页里，藏了就找不回来了
-export const TOP_KEEP = 'extensions-settings-button';
-// 三横菜单默认收进「更多工具」的
+// 选项菜单（☰）默认收进 ⋯ 的
 export const MENU_DEFAULT = ['option_toggle_AN', 'option_toggle_CFG', 'option_toggle_logprobs', 'option_convert_to_group', 'option_impersonate'];
 // 用户设置里能折起来的几段（选择器是酒馆 index.html 里的结构）
 export const USER_PARTS = [
-    { key: 'theme', sel: '#UI-Theme-Block > [name="themeElements"]', name: '主题细节', tip: '头像样式、颜色、字号、模糊、疯狂实验室' },
-    { key: 'character', sel: '#UI-Customization > [name="CharacterHandlingToggles"]', name: '角色卡', tip: '角色列表、标签、头像' },
-    { key: 'misc', sel: '#UI-Customization > [name="MiscellaneousToggles"]', name: '其他偏好', tip: '流式、音效、自定义 CSS' },
-    { key: 'chat', sel: '#power-user-option-checkboxes > [name="ChatMessageHandlingToggles"]', name: '聊天与消息', tip: '加载条数、消息按钮、自动续写' },
-    { key: 'script', sel: '#power-user-option-checkboxes > [name="STscriptToggles"]', name: '脚本', tip: '宏和脚本' },
+// 名字用酒馆官方中文翻译里这几段的标题
+    { key: 'theme', sel: '#UI-Theme-Block > [name="themeElements"]', name: 'UI 主题' },
+    { key: 'character', sel: '#UI-Customization > [name="CharacterHandlingToggles"]', name: '角色处理' },
+    { key: 'misc', sel: '#UI-Customization > [name="MiscellaneousToggles"]', name: '杂项' },
+    { key: 'chat', sel: '#power-user-option-checkboxes > [name="ChatMessageHandlingToggles"]', name: '聊天/消息处理' },
+    { key: 'script', sel: '#power-user-option-checkboxes > [name="STscriptToggles"]', name: 'ST脚本设置' },
 ];
 // 扩展页：酒馆自带的扩展（排在前面），其次酒馆助手，再其次别的插件按第一次见到的顺序
 export const SYSTEM_EXT = ['regex_container', 'vectors_container', 'assets_container', 'typing_indicator_container', 'expressions_container', 'sd_container', 'tts_container',
@@ -32,7 +31,7 @@ export const SYSTEM_EXT = ['regex_container', 'vectors_container', 'assets_conta
 export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_container', 'tts_container', 'qr_container', 'translation_container', 'caption_container', 'summarize_container'].map(id => 'id:' + id);
 
 const DEFAULTS = {
-    on: false, hideTop: [], foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [],
+    on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
     foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: true,
 };
@@ -40,29 +39,13 @@ const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typ
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'foldMenu', 'menuOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
-    out.hideTop = out.hideTop.filter(k => k !== TOP_KEEP);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
     return out;
 }
-// 砚台界面整理里已经选好的，搬过来（它存在 extensionSettings.yantaiInterface；名字对得上的才搬）
-export function fromYantai(yt, mine) {
-    if (!yt || typeof yt !== 'object') return null;
-    const userMap = { theme: 'theme', character: 'character', misc: 'misc', chat: 'chat', script: 'script' };
-    return normalizeTidy({
-        ...mine,
-        hideTop: yt.hiddenTop ?? mine.hideTop,
-        foldMenu: yt.foldMenu ?? mine.foldMenu, menuFolded: yt.foldedTools ?? mine.menuFolded,
-        hideWand: yt.hiddenWand ?? mine.hideWand,
-        foldExt: yt.foldExtensions ?? mine.foldExt, extFolded: yt.foldedExtensions ?? mine.extFolded, foldExtras: yt.foldExtras ?? mine.foldExtras,
-        extSeen: [...(mine.extSeen || []), ...(yt.extensionOrder || [])],
-        foldUser: yt.foldUserSettings ?? mine.foldUser,
-        userFolded: Array.isArray(yt.foldedUserSections) ? yt.foldedUserSections.map(k => userMap[k]).filter(Boolean) : mine.userFolded,
-    });
-}
-// 认东西用的名字：有 id 用 id，没有就用「在哪 + 显示的字」（和砚台同一种认法，搬过来的选择才对得上）
+// 认东西用的名字：有 id 用 id，没有就用「在哪 + 显示的字」
 const squash = s => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 180);
 export function keyOf(el, label, where) {
     if (el.id) return 'id:' + el.id;
@@ -87,9 +70,18 @@ export function extRank(item, seen) {
 const CSS = `
 .tvrm-tidy-gone{display:none!important}
 .tvrm-tidy-slim{flex:0 0 0!important;width:0!important;min-width:0!important;margin-inline:0!important;padding-inline:0!important}
-#options .tvrm-tidy-more{border-top:1px solid var(--SmartThemeBorderColor,#7775);margin-top:4px;padding-top:4px}
-#options .tvrm-tidy-more-list{display:flex;flex-direction:column}
-#options .tvrm-tidy-more-list[hidden]{display:none!important}
+.tvrm-tidy-more{border-top:1px solid var(--SmartThemeBorderColor,#7775);margin-top:4px;padding-top:2px}
+.tvrm-tidy-dots{display:flex!important;justify-content:center;align-items:center;cursor:pointer;padding:4px 0!important;opacity:.7}
+.tvrm-tidy-dots.is-open{opacity:1}
+.tvrm-tidy-dots i{transition:transform .2s}
+.tvrm-tidy-dots.is-open i{transform:rotate(90deg)}
+.tvrm-tidy-more-list{display:flex;flex-direction:column;font-size:.88em}
+.tvrm-tidy-more-list[hidden]{display:none!important}
+.tvrm-tidy-topmore{display:flex;align-items:center;cursor:pointer}
+.tvrm-tidy-topmore .drawer-icon{transition:transform .2s}
+.tvrm-tidy-topmore.is-open .drawer-icon{transform:scaleX(-1)}
+@keyframes tvrm-tidy-left{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+.tvrm-tidy-left{animation:tvrm-tidy-left .22s ease-out}
 .tvrm-tidy-fold{font:inherit;color:var(--SmartThemeBodyColor,inherit);display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;padding:10px 12px;margin:6px 0 10px;cursor:pointer;text-align:left;background:color-mix(in srgb,var(--SmartThemeBodyColor,#888) 6%,transparent);border:1px solid var(--SmartThemeBorderColor,#7775);border-radius:9px}
 .tvrm-tidy-fold>span:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
 .tvrm-tidy-fold small{opacity:.7;font-size:.8em}
@@ -102,7 +94,7 @@ const CSS = `
 @keyframes tvrm-tidy-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
 .tvrm-tidy-in{animation:tvrm-tidy-in .24s ease-out}
 .tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
-@media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out{animation:none}}
+@media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out,.tvrm-tidy-left{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
 @media (max-width:600px),(pointer:coarse) and (max-width:1200px){
  .tvrm-tidy-regex #regex_container{max-width:100%;overflow-x:hidden;box-sizing:border-box}
@@ -132,7 +124,8 @@ export function createTidy(host) {
     const classes = new Map(); // 元素 → Set(class)
     const styles = new Map(); // 元素 → Map(属性 → [原值, 原优先级])
     const moved = []; // [元素, 原位置占位]
-    const added = new Set(); // 咱们插进页面的元素（更多工具、折叠头……）
+    const added = new Set(); // 咱们插进页面的元素（⋯ 折叠、折叠头……）
+    const wandMeta = new WeakMap(); // 收进 ⋯ 的扩展菜单项 → 收之前的名字和认法
     const bare = new Map(); // 元素 → 原来有没有 class / style 属性（没有的，退回去时把空属性也去掉）
     const note = (el, attr) => { if (!bare.has(el)) bare.set(el, {}); bare.get(el)[attr] ??= !el.hasAttribute(attr); };
     function addClass(el, c) { if (!el) return; note(el, 'class'); if (!classes.has(el)) classes.set(el, new Set()); if (!el.classList.contains(c)) { el.classList.add(c); classes.get(el).add(c); } }
@@ -166,16 +159,17 @@ export function createTidy(host) {
     function topItems() {
         const root = $('top-settings-holder'); if (!root) return [];
         return [...root.children].flatMap((el, i) => {
+            if (added.has(el)) return [];
             const toggle = el.querySelector(':scope > .drawer-toggle') || (el.matches('.drawer-toggle,button') ? el : null);
             if (!toggle) return [];
-            const label = TOP_NAMES[el.id] || toggle.title || toggle.querySelector('[title]')?.title || el.getAttribute('aria-label') || '别的按钮 ' + (i + 1);
+            const label = squash(toggle.title || toggle.querySelector('[title]')?.title || el.getAttribute('aria-label')) || TOP_NAMES[el.id] || '别的图标 ' + (i + 1);
             return [{ key: el.id || 'extra:' + (toggle.id || label), label, el, toggle, on: shown(el) && shown(toggle) }];
         });
     }
     function menuItems() {
         const box = doc.querySelector('#options .options-content'); if (!box) return [];
         const seen = new Set(); const list = [];
-        for (const a of box.querySelectorAll('a[id]')) { // 已经收进「更多工具」的也列出来
+        for (const a of box.querySelectorAll('a[id]')) { // 已经收进 ⋯ 的也列出来
             if (seen.has(a.id)) continue;
             // 同一个 id 酒馆里可能有两个（关闭聊天就是一个藏着一个露着），有一个看得到就算
             const same = [...box.querySelectorAll('a[id]')].filter(x => x.id === a.id);
@@ -188,6 +182,7 @@ export function createTidy(host) {
         const root = $('extensionsMenu'); if (!root) return [];
         const list = [];
         for (const outer of root.children) {
+            if (added.has(outer)) continue;
             if (outer.matches('script,style,hr,input,textarea,select')) continue;
             const rows = outer.classList.contains('extension_container') ? [...outer.children] : [outer];
             for (const el of rows) {
@@ -197,7 +192,10 @@ export function createTidy(host) {
                 if (label) list.push({ key: keyOf(el, label, outer.id || 'wand'), label, el, wrap: outer, on: shown(el) && shown(outer) });
             }
         }
-        return uniq(list);
+        // 已经收进 ⋯ 的也列出来（名字、认法用收进去之前记下的）
+        const out = uniq(list);
+        for (const m of moved) if (m[2] === 'wand' && wandMeta.has(m[0])) out.push({ ...wandMeta.get(m[0]), on: true });
+        return out;
     }
     function extItems() {
         const list = [];
@@ -226,34 +224,60 @@ export function createTidy(host) {
         added.add(b);
         return b;
     }
+    // 收进 ⋯：选项菜单（☰）和扩展菜单（魔法棒）共用。挪进最下面一个只有三个点的折叠里，点开字小一号；原位置留个记号，还原时放回去
+    function dotsBox(box, els, openKey, kind, tag) {
+        const more = doc.createElement('div'); more.className = 'tvrm-tidy-more';
+        const head = doc.createElement(tag); head.className = 'interactable tvrm-tidy-dots' + (tag === 'div' ? ' list-group-item' : '');
+        head.setAttribute('role', 'button'); head.tabIndex = 0; head.title = '更多';
+        const icon = doc.createElement('i'); icon.className = 'fa-lg fa-solid fa-ellipsis';
+        head.append(icon);
+        const list = doc.createElement('div'); list.className = 'tvrm-tidy-more-list';
+        const show = () => { list.hidden = !S()[openKey]; head.classList.toggle('is-open', !!S()[openKey]); };
+        head.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); S()[openKey] = !S()[openKey]; save(); show(); });
+        head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') head.click(); });
+        more.append(head, list); box.append(more); added.add(more);
+        for (const el of els) { const mark = doc.createComment('tvrm-tidy'); el.before(mark); moved.push([el, mark, kind]); list.append(el); }
+        show();
+    }
+    // 顶栏：勾上的图标收到最右边一个小折叠里，点它往左展开（扩展程序也能收，从这个折叠点开就到）
     function applyTop() {
-        const items = topItems(); const hide = new Set(S().hideTop);
-        for (const it of items) if (hide.has(it.key) && it.key !== TOP_KEEP) { addClass(it.toggle, 'tvrm-tidy-gone'); if (it.el !== it.toggle) addClass(it.el, 'tvrm-tidy-slim'); }
+        const root = $('top-settings-holder'); if (!root) return;
+        const hide = new Set(S().hideTop);
+        const items = topItems().filter(it => hide.has(it.key));
+        if (!items.length) return;
+        const fold = doc.createElement('div'); fold.className = 'drawer tvrm-tidy-topmore'; fold.title = '更多'; fold.setAttribute('role', 'button'); fold.tabIndex = 0;
+        const icon = doc.createElement('div'); icon.className = 'drawer-icon fa-solid fa-fw fa-angles-left';
+        fold.append(icon); root.append(fold); added.add(fold); setStyle(fold, 'order', '9999');
+        const show = anim => {
+            const open = !!S().topOpen;
+            fold.classList.toggle('is-open', open);
+            for (const it of items) {
+                if (open) { dropClass(it.toggle, 'tvrm-tidy-gone'); dropClass(it.el, 'tvrm-tidy-slim'); if (anim) { addClass(it.el, 'tvrm-tidy-left'); setTimeout(() => dropClass(it.el, 'tvrm-tidy-left'), 260); } }
+                else { addClass(it.toggle, 'tvrm-tidy-gone'); if (it.el !== it.toggle) addClass(it.el, 'tvrm-tidy-slim'); }
+            }
+        };
+        for (const it of items) setStyle(it.el, 'order', '9998'); // 收起来的挨着折叠，展开就在它左边
+        fold.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); S().topOpen = !S().topOpen; save(); show(true); });
+        fold.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fold.click(); });
+        show(false);
     }
     function applyMenu() {
         const box = doc.querySelector('#options .options-content'); if (!box || !S().foldMenu) return;
         const pick = new Set(S().menuFolded);
         const els = [...box.querySelectorAll(':scope > a[id]')].filter(a => pick.has(a.id));
-        if (!els.length) return;
-        const more = doc.createElement('div'); more.className = 'tvrm-tidy-more';
-        const head = doc.createElement('a'); head.className = 'interactable'; head.setAttribute('role', 'button'); head.tabIndex = 0;
-        const icon = doc.createElement('i'); icon.className = 'fa-lg fa-solid fa-ellipsis';
-        const word = doc.createElement('span'); word.textContent = S().menuOpen ? '收起 ▴' : '更多工具 ▾';
-        head.append(icon, word);
-        const list = doc.createElement('div'); list.className = 'tvrm-tidy-more-list'; list.hidden = !S().menuOpen;
-        head.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); S().menuOpen = !S().menuOpen; save(); list.hidden = !S().menuOpen; word.textContent = S().menuOpen ? '收起 ▴' : '更多工具 ▾'; });
-        more.append(head, list); box.append(more); added.add(more);
-        for (const a of els) { const mark = doc.createComment('tvrm-tidy'); a.before(mark); moved.push([a, mark]); list.append(a); }
+        if (els.length) dotsBox(box, els, 'menuOpen', 'menu', 'a');
     }
     function applyWand() {
-        const items = wandItems(); const hide = new Set(S().hideWand);
-        for (const it of items) if (hide.has(it.key)) addClass(it.el, 'tvrm-tidy-gone');
-        // 一组里全藏了，组本身（带分隔的空盒子）也藏
+        const root = $('extensionsMenu'); if (!root) return;
+        const items = wandItems(); const pick = new Set(S().hideWand);
+        const picked = items.filter(it => pick.has(it.key));
+        if (!picked.length) return;
+        for (const it of picked) wandMeta.set(it.el, { ...it, moved: true });
+        const els = picked.map(it => it.el);
+        dotsBox(root, els, 'wandOpen', 'wand', 'div');
+        // 一组里全收走了，留下的空盒子也藏起来
         for (const wrap of new Set(items.map(i => i.wrap))) {
-            if (!wrap.classList.contains('extension_container')) continue;
-            const mine = items.filter(i => i.wrap === wrap);
-            const other = [...wrap.children].some(e => !e.matches('script,style,hr') && !mine.some(i => i.el === e));
-            if (mine.length && !other && mine.every(i => hide.has(i.key))) addClass(wrap, 'tvrm-tidy-gone');
+            if (wrap.classList.contains('extension_container') && wrap.parentElement === root && ![...wrap.children].some(e => !e.matches('script,style,hr'))) addClass(wrap, 'tvrm-tidy-gone');
         }
     }
     function extrasRows(parent, roots) {
@@ -284,16 +308,16 @@ export function createTidy(host) {
         for (const r of roots) { addClass(r, 'tvrm-tidy-col'); setStyle(r, 'display', 'contents'); }
         for (const it of items) { addClass(it.el, 'tvrm-tidy-row'); setStyle(it.el, 'order', String(extRank(it, S().extSeen))); }
         for (const r of roots) for (const el of r.children) if (el.classList.contains('extension_container') && !el.children.length && !el.textContent.trim()) addClass(el, 'tvrm-tidy-gone');
-        // 收进「更多扩展设置」的：自己的面板不能收
+        // 收起来的扩展程序：自己的面板不能收
         const folded = items.filter(it => !it.mine && S().extFolded.includes(it.key));
         const extras = S().foldExtras ? extrasRows(parent, roots) : [];
         const n = folded.length + (extras.length ? 1 : 0);
         if (!n) return;
         // 展开 / 收起只改这几个元素的 class，不整页重排（整页重排会跳）；展开的往下长出来，比外面的小一号、底色淡一点
         const sub = [...folded.map(it => it.el), ...extras];
-        const head = fold(`更多扩展设置（${n}）`, '不常用的都在这里，点开往下展开', S().extOpen, () => toggleMore());
+        const head = fold(`收起的扩展程序（${n}）`, null, S().extOpen, () => toggleMore());
         head.classList.add('tvrm-tidy-row', 'tvrm-tidy-more-head'); roots[0].prepend(head); setStyle(head, 'order', '100');
-        const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-row tvrm-tidy-more-tail'; tail.textContent = '▴ 收起更多扩展设置';
+        const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-row tvrm-tidy-more-tail'; tail.textContent = '▴ 收起';
         tail.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); toggleMore(); });
         added.add(tail); roots[0].append(tail); setStyle(tail, 'order', '1999'); setStyle(tail, 'margin-inline-start', '14px'); setStyle(tail, 'width', 'calc(100% - 14px)');
         folded.forEach((it, i) => setStyle(it.el, 'order', String(200 + i)));
@@ -335,7 +359,7 @@ export function createTidy(host) {
             const root = doc.querySelector(p.sel); if (!root) continue;
             const open = !!S().userOpen[p.key];
             const kids = [...root.children];
-            root.prepend(fold(p.name, p.tip, open, () => { S().userOpen[p.key] = !S().userOpen[p.key]; save(); apply(); }));
+            root.prepend(fold(p.name, null, open, () => { S().userOpen[p.key] = !S().userOpen[p.key]; save(); apply(); }));
             if (!open) for (const k of kids) addClass(k, 'tvrm-tidy-gone');
         }
     }
@@ -400,7 +424,7 @@ export function createTidy(host) {
     }
     let diagText = '';
     function restore() {
-        Object.assign(S(), { on: false, hideTop: [], hideWand: [] });
+        Object.assign(S(), { on: false });
         save(); apply(); rerender?.();
         toast('success', '界面恢复原样了');
     }
@@ -437,57 +461,49 @@ export function createTidy(host) {
         const st = S();
         const scroll = box.scrollTop;
         const kids = [];
-        kids.push(h('p', { class: 'tvrm-note' }, '把不常用的按钮和设置收起来。只是藏起来，插件照常运行；要停用插件去「管理扩展」。'));
-        if (yantaiOn()) kids.push(h('p', { class: 'tvrm-tidy-warn' }, '砚台 · 界面整理还开着。两个一起会抢着改同一块界面，所以这里先不动。去「管理扩展」里停用它、刷新酒馆，这里就会生效。'));
+        kids.push(h('p', { class: 'tvrm-note' }, '勾上的都收起来，用的时候点开就有，功能不受影响。'));
+        if (yantaiOn()) kids.push(h('p', { class: 'tvrm-tidy-warn' }, '检测到「砚台 · 界面整理」还在运行，两个会改同一块界面，这里先不生效。在「管理扩展程序」里停用它并刷新后就好。'));
         kids.push(check('开启界面整理', st.on, v => change(x => { x.on = v; })));
-        const yt = ctx().extensionSettings?.yantaiInterface;
         kids.push(h('div', { class: 'tvrm-actions' },
-            btn('恢复原界面', async () => { if (await host.confirm?.('把藏起来的按钮全部放出来，关掉界面整理？') !== false) restore(); }),
-            btn('重新认一遍', () => { apply(); rerender?.(); toast('success', '重新看过了'); }),
-            yt ? btn('搬砚台里的选择', async () => {
-                if (await host.confirm?.('把砚台 · 界面整理里选好的（藏哪些按钮、收哪些扩展）搬过来，覆盖这里现在的选择？') === false) return;
-                const next = fromYantai(yt, st); if (next) { s = { ...next, on: st.on }; save(); apply(); rerender?.(); toast('success', '搬过来了'); }
-            }) : null));
+            btn('恢复原界面', async () => { if (await host.confirm?.('关掉界面整理，界面回到原来的样子？（勾选会留着，下次打开还在）') !== false) restore(); }),
+            btn('重新识别', () => { apply(); rerender?.(); toast('success', '重新看过了'); })));
 
         // 只列现在看得到的；酒馆自己藏着、只在某些聊天里才出现的不列，底下小字说一声有几个
-        const away = n => n ? h('p', { class: 'tvrm-note' }, `还有 ${n} 个现在没出现（酒馆或主题自己藏着，或者只在某些聊天里才有），没列出来。`) : null;
+        const away = n => n ? h('p', { class: 'tvrm-note' }, `另有 ${n} 项现在没显示（酒馆或主题本来就藏着，或只在特定聊天里出现），没列出来。`) : null;
+        const grid = (list, picked, key) => h('div', { class: 'tvrm-tidy-grid' }, list.map(x => check(x.label, picked.has(x.key), v => change(o => { o[key] = flip(o[key], x.key, v); }))));
+        const clear = key => btn('全部放回', () => change(o => { o[key] = []; }));
+
         const allTops = topItems(); const tops = allTops.filter(x => x.on);
         const hide = new Set(st.hideTop);
-        kids.push(part('top', '顶部按钮', `最上面那排图标 · 藏了 ${tops.filter(t => hide.has(t.key)).length} 个`,
-            h('p', { class: 'tvrm-note' }, '勾着＝显示，去掉勾＝藏起来。「扩展」一直留着，不然回不到这里。'),
-            tops.length ? h('div', { class: 'tvrm-tidy-grid' }, tops.map(t => check(t.label, !hide.has(t.key), v => change(x => { x.hideTop = flip(x.hideTop, t.key, !v); }), null, t.key === TOP_KEEP))) : h('p', { class: 'tvrm-note' }, '没找到顶栏，可能主题换了结构。'),
-            away(allTops.length - tops.length),
-            btn('全部显示', () => change(x => { x.hideTop = []; }))));
+        kids.push(part('top', '顶栏', `收起 ${tops.filter(x => hide.has(x.key)).length} 个 · 收进最右边的 «，点开往左展开`,
+            tops.length ? grid(tops, hide, 'hideTop') : h('p', { class: 'tvrm-note' }, '没找到顶栏，可能主题改了结构。'),
+            away(allTops.length - tops.length), clear('hideTop')));
 
         const allMenu = menuItems(); const menu = allMenu.filter(x => x.on);
-        kids.push(part('menu', '三横菜单', '输入框左边三条横线 · 勾上的收进「更多工具」',
-            check('收起不常用的', st.foldMenu, v => change(x => { x.foldMenu = v; })),
-            menu.length ? h('div', { class: 'tvrm-tidy-grid' }, menu.map(m => check(m.label, st.menuFolded.includes(m.key), v => change(x => { x.menuFolded = flip(x.menuFolded, m.key, v); })))) : h('p', { class: 'tvrm-note' }, '没找到三横菜单。'),
-            away(allMenu.length - menu.length)));
+        kids.push(part('menu', '选项菜单', `输入框左边的 ☰ · 收起 ${menu.filter(x => st.menuFolded.includes(x.key)).length} 个，收进最下面的 ⋯`,
+            check('启用', st.foldMenu, v => change(x => { x.foldMenu = v; })),
+            menu.length ? grid(menu, new Set(st.menuFolded), 'menuFolded') : h('p', { class: 'tvrm-note' }, '没找到选项菜单。'),
+            away(allMenu.length - menu.length), clear('menuFolded')));
 
         const allWand = wandItems(); const wand = allWand.filter(x => x.on);
-        const whide = new Set(st.hideWand);
-        kids.push(part('wand', '魔法棒', `输入框左边的魔法棒 · 认出 ${wand.length} 个入口`,
-            h('p', { class: 'tvrm-note' }, '勾着＝显示，去掉勾＝藏起来。别的插件塞进去的也在这里。'),
-            wand.length ? h('div', { class: 'tvrm-tidy-grid' }, wand.map(w => check(w.label, !whide.has(w.key), v => change(x => { x.hideWand = flip(x.hideWand, w.key, !v); })))) : h('p', { class: 'tvrm-note' }, '还没认出来。先点开一次魔法棒，再点上面「重新认一遍」。'),
-            away(allWand.length - wand.length),
-            btn('全部显示', () => change(x => { x.hideWand = []; }))));
+        kids.push(part('wand', '扩展菜单', `输入框左边的魔法棒 · 收起 ${wand.filter(x => st.hideWand.includes(x.key)).length} 个，收进最下面的 ⋯`,
+            wand.length ? grid(wand, new Set(st.hideWand), 'hideWand') : h('p', { class: 'tvrm-note' }, '还没识别到。先点开一次魔法棒，再点上面「重新识别」。'),
+            away(allWand.length - wand.length), clear('hideWand')));
 
         const exts = extItems().filter(e => !e.mine);
-        kids.push(part('ext', '扩展页', `排成一列 · 收了 ${exts.filter(e => st.extFolded.includes(e.key)).length} 个`,
-            check('扩展页整理成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '顺序：更多扩展设置 → 酒馆自带 → 酒馆助手 → 别的插件（按第一次见到的顺序）'),
-            $('extensions_url') ? check('旧的 Extras API 也收起来', st.foldExtras, v => change(x => { x.foldExtras = v; }), '酒馆已经不用它了') : null,
-            h('p', { class: 'tvrm-note' }, '勾上＝收进「更多扩展设置」。咱们自己这个面板一直在最上面。'),
-            exts.length ? h('div', { class: 'tvrm-tidy-list' }, exts.map(e => check(e.label, st.extFolded.includes(e.key), v => change(x => { x.extFolded = flip(x.extFolded, e.key, v); })))) : h('p', { class: 'tvrm-note' }, '还没认出来。'),
+        kids.push(part('ext', '扩展程序页', `收起 ${exts.filter(e => st.extFolded.includes(e.key)).length} 个`,
+            check('排成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '咱们的面板在最上面，然后是收起的、酒馆自带的、酒馆助手、其他插件'),
+            $('extensions_url') ? check('附加 API（已弃用）也收起来', st.foldExtras, v => change(x => { x.foldExtras = v; })) : null,
+            exts.length ? h('div', { class: 'tvrm-tidy-list' }, exts.map(e => check(e.label, st.extFolded.includes(e.key), v => change(x => { x.extFolded = flip(x.extFolded, e.key, v); })))) : h('p', { class: 'tvrm-note' }, '还没识别到。'),
             diagText ? h('textarea', { class: 'text_pole tvrm-tidy-diag', rows: '8', readonly: true }, diagText) : null,
-            h('div', { class: 'tvrm-actions' }, btn('复制排查信息', () => copyDiag()), btn('全部放外面', () => change(x => { x.extFolded = []; })), btn('用建议的', () => change(x => { x.extFolded = [...EXT_DEFAULT]; x.extOpen = false; })))));
+            h('div', { class: 'tvrm-actions' }, clear('extFolded'), btn('恢复默认', () => change(x => { x.extFolded = [...EXT_DEFAULT]; x.extOpen = false; })), btn('复制排查信息', () => copyDiag()))));
 
-        kids.push(part('user', '用户设置', '很长的几段折起来，搜设置时自动摊开',
-            check('折起来', st.foldUser, v => change(x => { x.foldUser = v; })),
-            USER_PARTS.filter(p => doc.querySelector(p.sel)).map(p => check(p.name, st.userFolded.includes(p.key), v => change(x => { x.userFolded = flip(x.userFolded, p.key, v); }), p.tip))));
+        kids.push(part('user', '用户设置', '勾上的段落折起来，搜索设置时自动全部展开',
+            check('启用', st.foldUser, v => change(x => { x.foldUser = v; })),
+            USER_PARTS.filter(p => doc.querySelector(p.sel)).map(p => check(p.name, st.userFolded.includes(p.key), v => change(x => { x.userFolded = flip(x.userFolded, p.key, v); })))));
 
-        kids.push(part('regex', '手机上的正则', '正则编辑不撑出屏幕',
-            check('手机上正则不撑出屏幕', st.regexFit, v => change(x => { x.regexFit = v; }), '名字太长显示省略号，按钮留在同一行')));
+        kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
+            check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));
 
         box.replaceChildren(...kids);
         box.scrollTop = scroll;
