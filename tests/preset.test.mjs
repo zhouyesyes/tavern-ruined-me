@@ -176,3 +176,22 @@ test('预设格里直接点圆点开关：当前聊天马上改到酒馆；别�
     await x.enter('A', '聊天A');
     assert.equal(x.s.name, 'P1'); assert.equal(x.s.order.find(o => o.identifier === 'a').enabled, false, '进 A 时用上了');
 });
+
+test('删掉某个聊天的预设记录；当前聊天不能删；酒馆删聊天时开着开关就一起删', async () => {
+    const x = setup(); await x.enter('c:a.png|A', '聊天A'); await x.enter('c:a.png|B', '聊天B'); await x.enter('c:a.png|C', '聊天C');
+    const chats = x.keeper.store().chats;
+    assert.equal(await x.keeper.forget('c:a.png|C', false), false); // 当前聊天
+    assert.ok(chats['c:a.png|C']);
+    assert.equal(await x.keeper.forget('c:a.png|A'), true);
+    assert.ok(!chats['c:a.png|A']);
+    // 面板上有按钮（当前聊天那张没有）
+    const root = x.document.getElementById('r'); x.keeper.render(root);
+    assert.equal([...root.querySelectorAll('button')].filter(b => b.textContent === '删掉这个聊天的预设记录').length, 1);
+    assert.match(root.textContent, /删聊天时，这里记着的预设也一起删/);
+    // 酒馆删了聊天 B
+    assert.equal(x.keeper.onChatDeleted('c:a.png|B'), true); assert.ok(!chats['c:a.png|B']);
+    // 关掉开关就不删
+    await x.enter('c:a.png|D', '聊天D'); await x.enter('c:a.png|C', '聊天C');
+    x.keeper.store().autoForget = false;
+    assert.equal(x.keeper.onChatDeleted('c:a.png|D'), false); assert.ok(chats['c:a.png|D']);
+});
