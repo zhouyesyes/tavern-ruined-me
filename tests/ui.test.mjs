@@ -453,3 +453,22 @@ test('在「所有聊天」里点别的聊天的圆点：先记成待办，下�
     const key = Object.keys(x.app.settings().world.index).find(k => k.endsWith('|same-id'));
     assert.equal(x.app.settings().world.index[key].pending, undefined, '用完就清掉');
 });
+
+test('角色和人设列表更新不再触发世界书的全页查找；重建世界书仍同步', async () => {
+    const x = setup(); await x.app.init();
+    const original = x.document.getElementById.bind(x.document);
+    let searches = 0;
+    x.document.getElementById = id => { if (id === 'world_popup_entries_list') searches++; return original(id); };
+    const list = x.document.createElement('div'); list.id = 'character-list'; x.document.body.append(list);
+    for (let i = 0; i < 100; i++) { list.append(x.document.createElement('div')); await x.tick(); }
+    assert.equal(searches, 0);
+    x.document.body.insertAdjacentHTML('beforeend', '<select id="world_editor_select"><option value="0">A</option></select><div id="world_popup_entries_list"><div class="world_entry" uid="1"><i name="entryKillSwitch"></i></div></div>');
+    await x.tick(); await x.run();
+    const note = x.document.querySelector('.tvrm-note-line'); assert.ok(note);
+    x.app.syncNative(); assert.equal(x.document.querySelector('.tvrm-note-line'), note);
+    const old = original('world_popup_entries_list');
+    old.outerHTML = '<div id="world_popup_entries_list"><div class="world_entry" uid="2"><i name="entryKillSwitch"></i></div></div>';
+    await x.tick(); await x.run();
+    assert.ok(x.document.querySelector('.tvrm-note-line'));
+    assert.ok(x.document.querySelector('[name="entryKillSwitch"]').classList.contains('fa-toggle-off'));
+});

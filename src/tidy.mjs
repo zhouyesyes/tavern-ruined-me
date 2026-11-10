@@ -33,13 +33,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: true, smooth: false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: false, smooth: false, pageLite: false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth', 'pageLite']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -96,6 +96,11 @@ const CSS = `
 .tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
 @media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out,.tvrm-tidy-left{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
+/* 页面减负只改酒馆面板的绘制效果，不加触摸监听、图层隔离或滚动接管。 */
+.tvrm-tidy-page-lite :is(.drawer-content,#right-nav-panel,#left-nav-panel,#character_popup,#world_popup,dialog.popup),
+.tvrm-tidy-page-lite :is(.drawer-content,#right-nav-panel,#left-nav-panel,#character_popup,#world_popup,dialog.popup) :where(*){
+ backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;text-shadow:none!important
+}
 /* 滑动空白修复（试验）：让屏外消息继续参与渲染，关闭后恢复主题行为。 */
 .tvrm-tidy-smooth #chat .mes{content-visibility:visible!important;contain-intrinsic-size:none!important}
 @media (max-width:600px),(pointer:coarse) and (max-width:1200px){
@@ -119,7 +124,7 @@ export function createTidy(host) {
     let s = null;
     const S = () => (s ??= store());
     const save = () => { ctx().extensionSettings[TIDY] = s; ctx().saveSettingsDebounced?.(); };
-    let rerender = null; let dead = false; let queued = false;
+    let rerender = null; let dead = false; let queued = false; let frame = null;
     let style = null;
 
     // —— 记账：加过的 class、改过的行内样式、挪过的菜单项、插进去的东西，还原时一样样退回去 ——
@@ -171,13 +176,15 @@ export function createTidy(host) {
     }
     function menuItems() {
         const box = doc.querySelector('#options .options-content'); if (!box) return [];
-        const seen = new Set(); const list = [];
-        for (const a of box.querySelectorAll('a[id]')) { // 已经收进 ⋯ 的也列出来
-            if (seen.has(a.id)) continue;
-            // 同一个 id 酒馆里可能有两个（关闭聊天就是一个藏着一个露着），有一个看得到就算
-            const same = [...box.querySelectorAll('a[id]')].filter(x => x.id === a.id);
-            seen.add(a.id);
-            list.push({ key: a.id, label: squash(a.querySelector('span')?.textContent || a.textContent) || a.id, on: same.some(shown) });
+        const groups = new Map();
+        for (const el of box.querySelectorAll('a[id]')) {
+            if (!groups.has(el.id)) groups.set(el.id, []);
+            groups.get(el.id).push(el);
+        }
+        const list = [];
+        for (const [key, same] of groups) {
+            const a = same[0];
+            list.push({ key, label: squash(a.querySelector('span')?.textContent || a.textContent) || key, on: same.some(shown) });
         }
         return list;
     }
@@ -206,11 +213,13 @@ export function createTidy(host) {
             const root = $(id); if (!root) continue;
             for (const el of root.children) {
                 if (el.matches('script,style,link,template') || added.has(el)) continue;
-                const heads = [...el.querySelectorAll('.inline-drawer-header')];
+                // 自己面板里可能有成百上千个设置；只认外层标题，不扫描整棵面板。
+                const mine = el.id === 'tvrm-drawer' || !!el.querySelector('#tvrm-drawer');
+                const heads = mine ? [el.querySelector('.inline-drawer-header')].filter(Boolean) : [...el.querySelectorAll('.inline-drawer-header')];
                 if (el.matches('.inline-drawer-header')) heads.unshift(el);
                 if (!heads.length) continue; // 认不出来的布局不碰
                 const label = [...new Set(heads.map(h => squash(h.querySelector('b,strong')?.textContent || h.textContent)).filter(Boolean))].join(' / ');
-                if (label) list.push({ key: keyOf(el, label, id), label, el, mine: el.id === 'tvrm-drawer' || !!el.querySelector('#tvrm-drawer') });
+                if (label) list.push({ key: keyOf(el, label, id), label, el, mine });
             }
         }
         const out = uniq(list);
@@ -362,9 +371,16 @@ export function createTidy(host) {
         show(S().extOpen);
     }
     let search = null;
+    let searching = false;
+    function onSettingsSearch() {
+        const active = !!search?.value.trim();
+        if (active === searching) return;
+        searching = active;
+        schedule();
+    }
     function applyUser() {
         const box = $('settingsSearch');
-        if (box !== search) { search?.removeEventListener('input', schedule); search = box; search?.addEventListener('input', schedule); }
+        if (box !== search) { search?.removeEventListener('input', onSettingsSearch); search = box; searching = !!box?.value.trim(); search?.addEventListener('input', onSettingsSearch); }
         if (!S().foldUser || box?.value.trim()) return; // 在搜设置的时候全部摊开
         for (const p of USER_PARTS) {
             if (!S().userFolded.includes(p.key)) continue;
@@ -383,9 +399,10 @@ export function createTidy(host) {
             for (const f of [applyTop, applyMenu, applyWand, applyExt, applyUser]) {
                 try { f(); } catch (e) { console.warn('[酒馆你害我不浅] 界面整理出错', e); }
             }
-            if (S().regexFit) addClass(doc.body, 'tvrm-tidy-regex');
-            if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
         }
+        if (S().regexFit) addClass(doc.body, 'tvrm-tidy-regex');
+        if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
+        if (S().pageLite) addClass(doc.body, 'tvrm-tidy-page-lite');
         watch();
     }
 
@@ -393,7 +410,7 @@ export function createTidy(host) {
     const observers = [];
     function pause() { for (const o of observers) o.disconnect(); observers.length = 0; }
     function watch() {
-        const Obs = doc.defaultView?.MutationObserver; if (!Obs) return;
+        const Obs = doc.defaultView?.MutationObserver; if (!Obs || !S().on || yantaiOn()) return;
         const targets = [$('top-settings-holder'), $('extensionsMenu'), $('extensions_settings'), $('extensions_settings2'), doc.querySelector('#options .options-content'),
             ...USER_PARTS.map(p => doc.querySelector(p.sel))].filter(Boolean);
         for (const t of targets) {
@@ -403,8 +420,11 @@ export function createTidy(host) {
         }
     }
     function schedule() {
-        if (queued || dead) return; queued = true;
-        queueMicrotask(() => { queued = false; apply(); rerender?.(); });
+        if (queued || dead || !S().on || yantaiOn()) return;
+        queued = true;
+        // 合并同一帧的菜单加载、DOM 更新和点击，留给浏览器先处理交互。
+        const run = () => { frame = null; queued = false; if (!dead) { apply(); rerender?.(); } };
+        frame = doc.defaultView.requestAnimationFrame ? doc.defaultView.requestAnimationFrame(run) : doc.defaultView.setTimeout(run, 0);
     }
 
     function init() {
@@ -417,6 +437,10 @@ export function createTidy(host) {
         }, true);
         doc.addEventListener('click', e => { if (e.target.closest?.('#extensionsMenuButton,#extensions-settings-button > .drawer-toggle,#user-settings-button > .drawer-toggle,#options_button')) schedule(); }, true);
         host.on?.('APP_READY', schedule);
+        doc.defaultView.addEventListener('focus', syncNativeFullscreen);
+        syncNativeFullscreen();
+        doc.addEventListener('fullscreenchange', fullscreenChanged);
+        doc.addEventListener('webkitfullscreenchange', fullscreenChanged);
         apply();
     }
     // 扩展页排查：每块的 id、在谁下面、排序、显示方式，复制出来发给 cc（只有插件名字，没有聊天内容）
@@ -445,6 +469,51 @@ export function createTidy(host) {
         Object.assign(S(), { on: false });
         save(); apply(); rerender?.();
         toast('success', '界面恢复原样了');
+    }
+
+    // 全屏只在点击时请求，不保存为自动进入；退出系统全屏时同步按钮。
+    let fullscreenBusy = false;
+    let nativeFullscreen = false;
+    const nativeWindow = () => doc.defaultView?.__TAURI__?.window?.getCurrentWindow?.();
+    const fullscreenElement = () => doc.fullscreenElement || doc.webkitFullscreenElement;
+    const fullscreenChanged = () => rerender?.();
+    async function syncNativeFullscreen() {
+        try {
+            const win = nativeWindow();
+            if (!win?.isFullscreen) return;
+            const value = await win.isFullscreen();
+            if (!dead && value !== nativeFullscreen) { nativeFullscreen = value; rerender?.(); }
+        } catch { /* 未开放窗口权限时，留给点击后的错误提示。 */ }
+    }
+    async function toggleFullscreen() {
+        if (fullscreenBusy) return;
+        fullscreenBusy = true;
+        try {
+            const win = nativeWindow();
+            if (win?.isFullscreen && win?.setFullscreen) {
+                const was = await win.isFullscreen();
+                await win.setFullscreen(!was);
+                nativeFullscreen = await win.isFullscreen();
+                if (nativeFullscreen === was) throw new Error('全屏状态未改变');
+            } else if (fullscreenElement()) {
+                const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+                if (!exit) throw new Error('没有退出全屏接口');
+                await exit.call(doc);
+            } else {
+                const root = doc.documentElement;
+                const request = root.requestFullscreen || root.webkitRequestFullscreen;
+                if (!request) {
+                    toast('warning', '当前 TT / 浏览器未开放页面全屏接口，插件无法隐藏系统状态栏和底部横条。请使用 TT 自带的全屏设置；Safari 可尝试添加到主屏幕后打开。');
+                    return;
+                }
+                await request.call(root);
+            }
+        } catch (e) {
+            toast('warning', '未能切换全屏：' + (e?.message || '当前环境不支持，请检查 TT 的全屏设置'));
+        } finally {
+            fullscreenBusy = false;
+            rerender?.();
+        }
     }
 
     // —— 面板 ——
@@ -479,10 +548,11 @@ export function createTidy(host) {
         const st = S();
         const scroll = box.scrollTop;
         const kids = [];
-        kids.push(h('p', { class: 'tvrm-note' }, '勾上的都收起来，用的时候点开就有，功能不受影响。'));
-        if (yantaiOn()) kids.push(h('p', { class: 'tvrm-tidy-warn' }, '检测到「砚台 · 界面整理」还在运行，两个会改同一块界面，这里先不生效。在「管理扩展程序」里停用它并刷新后就好。'));
-        kids.push(check('开启界面整理', st.on, v => change(x => { x.on = v; })));
-        kids.push(h('div', { class: 'tvrm-actions' },
+        const group = [];
+        group.push(h('p', { class: 'tvrm-note' }, '只控制下面五项，勾上的收起来，用的时候点开就有。'));
+        if (yantaiOn()) group.push(h('p', { class: 'tvrm-tidy-warn' }, '检测到「砚台 · 界面整理」还在运行，两个会改同一块界面，这里先不生效。在「管理扩展程序」里停用它并刷新后就好。'));
+        group.push(check('开启界面整理', st.on, v => change(x => { x.on = v; })));
+        group.push(h('div', { class: 'tvrm-actions' },
             btn('恢复原界面', async () => { if (await host.confirm?.('关掉界面整理，界面回到原来的样子？（勾选会留着，下次打开还在）') !== false) restore(); }),
             btn('重新识别', () => { apply(); rerender?.(); toast('success', '重新看过了'); })));
 
@@ -493,32 +563,34 @@ export function createTidy(host) {
 
         const allTops = topItems(); const tops = allTops.filter(x => x.on);
         const hide = new Set(st.hideTop);
-        kids.push(part('top', '顶栏', `收起 ${tops.filter(x => hide.has(x.key)).length} 个 · 收进最右边的 «，点开往左展开`,
+        group.push(part('top', '顶栏', `收起 ${tops.filter(x => hide.has(x.key)).length} 个 · 收进最右边的 «，点开往左展开`,
             tops.length ? grid(tops, hide, 'hideTop') : h('p', { class: 'tvrm-note' }, '没找到顶栏，可能主题改了结构。'),
             away(allTops.length - tops.length), clear('hideTop')));
 
         const allMenu = menuItems(); const menu = allMenu.filter(x => x.on);
-        kids.push(part('menu', '选项菜单', `输入框左边的 ☰ · 收起 ${menu.filter(x => st.menuFolded.includes(x.key)).length} 个，收进最下面的 ⋯`,
+        group.push(part('menu', '选项菜单', `输入框左边的 ☰ · 收起 ${menu.filter(x => st.menuFolded.includes(x.key)).length} 个，收进最下面的 ⋯`,
             check('启用', st.foldMenu, v => change(x => { x.foldMenu = v; })),
             menu.length ? grid(menu, new Set(st.menuFolded), 'menuFolded') : h('p', { class: 'tvrm-note' }, '没找到选项菜单。'),
             away(allMenu.length - menu.length), clear('menuFolded')));
 
         const allWand = wandItems(); const wand = allWand.filter(x => x.on);
-        kids.push(part('wand', '扩展菜单', `输入框左边的魔法棒 · 收起 ${wand.filter(x => st.hideWand.includes(x.key)).length} 个，收进最下面的 ⋯`,
+        group.push(part('wand', '扩展菜单', `输入框左边的魔法棒 · 收起 ${wand.filter(x => st.hideWand.includes(x.key)).length} 个，收进最下面的 ⋯`,
             wand.length ? grid(wand, new Set(st.hideWand), 'hideWand') : h('p', { class: 'tvrm-note' }, '还没识别到。先点开一次魔法棒，再点上面「重新识别」。'),
             away(allWand.length - wand.length), clear('hideWand')));
 
         const exts = extItems().filter(e => !e.mine);
-        kids.push(part('ext', '扩展程序页', `收起 ${exts.filter(e => st.extFolded.includes(e.key)).length} 个`,
+        group.push(part('ext', '扩展程序页', `收起 ${exts.filter(e => st.extFolded.includes(e.key)).length} 个`,
             check('排成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '咱们的面板在最上面，然后是收起的、酒馆自带的、酒馆助手、其他插件'),
             $('extensions_url') ? check('附加 API（已弃用）也收起来', st.foldExtras, v => change(x => { x.foldExtras = v; })) : null,
             exts.length ? h('div', { class: 'tvrm-tidy-list' }, exts.map(e => check(e.label, st.extFolded.includes(e.key), v => change(x => { x.extFolded = flip(x.extFolded, e.key, v); })))) : h('p', { class: 'tvrm-note' }, '还没识别到。'),
             diagText ? h('textarea', { class: 'text_pole tvrm-tidy-diag', rows: '8', readonly: true }, diagText) : null,
             h('div', { class: 'tvrm-actions' }, clear('extFolded'), btn('恢复默认', () => change(x => { x.extFolded = [...EXT_DEFAULT]; x.extOpen = false; })), btn('复制排查信息', () => copyDiag()))));
 
-        kids.push(part('user', '用户设置', '勾上的段落折起来，搜索设置时自动全部展开',
+        group.push(part('user', '用户设置', '勾上的段落折起来，搜索设置时自动全部展开',
             check('启用', st.foldUser, v => change(x => { x.foldUser = v; })),
             USER_PARTS.filter(p => doc.querySelector(p.sel)).map(p => check(p.name, st.userFolded.includes(p.key), v => change(x => { x.userFolded = flip(x.userFolded, p.key, v); })))));
+
+        kids.push(part('organize', '界面整理', st.on ? '已开启 · 顶栏、选项菜单、扩展菜单、扩展程序页、用户设置' : '未开启 · 包含五项整理设置', group));
 
         kids.push(part('smooth', '滑动空白修复（试验）', st.smooth ? '开着' : '关着',
             check('启用', st.smooth, v => change(x => { x.smooth = v; }), '让屏幕外的消息也参与渲染，尝试减少滑动时先空白再出现。保留原来的开关状态。'),
@@ -527,9 +599,17 @@ export function createTidy(host) {
         kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
             check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));
 
+        kids.push(part('pageLite', '页面滑动减负（试验）', st.pageLite ? '开着 · 面板模糊和阴影已关闭' : '关着 · 角色、人设及其他面板共用',
+            check('启用', st.pageLite, v => change(x => { x.pageLite = v; }), '减少面板的背景模糊、盒子阴影和文字阴影，外观会简化；关闭恢复主题效果。'),
+            h('p', { class: 'tvrm-note' }, '针对滑动后页面迟迟才动的情况，独立于界面整理和聊天空白修复。需要在 TT 手机上开关对比；不能消除其他插件阻塞或系统手势等待。')));
+
+        kids.push(part('fullscreen', '页面全屏', fullscreenElement() || nativeFullscreen ? '已全屏' : '让酒馆占满屏幕',
+            h('div', { class: 'tvrm-actions' }, btn(fullscreenElement() || nativeFullscreen ? '退出全屏' : '进入全屏', () => toggleFullscreen())),
+            h('p', { class: 'tvrm-note' }, '独立于界面整理。能否隐藏手机顶部状态栏和底部横条，取决于 TT / 浏览器的全屏支持。')));
+
         box.replaceChildren(...kids);
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { dead = true; pause(); undoAll(); style?.remove(); } };
+    return { init, apply, render, restore, settings: S, destroy() { dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }

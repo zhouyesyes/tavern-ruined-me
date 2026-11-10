@@ -640,12 +640,12 @@ export function createApp(host) {
             const sw = row.querySelector('[name="entryKillSwitch"]');
             if (!sw) continue;
             const want = managed ? resolveEntry(settings(), chatWorld(), book, row.getAttribute('uid')) : null;
-            row.querySelector('.tvrm-note-line')?.remove();
+            const note = row.querySelector('.tvrm-note-line');
             sw.classList.remove('tvrm-lock');
-            if (want === null) continue;
+            if (want === null) { note?.remove(); continue; }
             sw.classList.toggle('fa-toggle-on', want); sw.classList.toggle('fa-toggle-off', !want);
             row.classList.toggle('disabledWIEntry', !want);
-            row.prepend(h('small', { class: 'tvrm-note-line' }, '聊天配置 · 会同步到原书'));
+            if (!note) row.prepend(h('small', { class: 'tvrm-note-line' }, '聊天配置 · 会同步到原书'));
         }
         if (watchedList?.isConnected) nativeObserver?.observe(watchedList, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'uid'] });
     }
@@ -656,9 +656,23 @@ export function createApp(host) {
         const Observer = doc.defaultView?.MutationObserver;
         if (!Observer) return;
         nativeObserver = new Observer(scheduleNative);
-        const life = new Observer(() => {
-            const list = doc.getElementById('world_popup_entries_list');
-            if (list !== watchedList) { watchedList = list; nativeObserver.disconnect(); scheduleNative(); }
+        const life = new Observer(records => {
+            // 世界书列表还在原处时，角色、人设、聊天等页面的增删与同步无关。
+            if (watchedList?.isConnected) return;
+            let list = null;
+            for (const record of records) {
+                for (const node of record.addedNodes) {
+                    if (node.nodeType !== 1) continue;
+                    list = node.id === 'world_popup_entries_list' ? node : node.querySelector('#world_popup_entries_list');
+                    if (list?.isConnected) break;
+                    list = null;
+                }
+                if (list) break;
+            }
+            if (list !== watchedList) {
+                watchedList = list; nativeObserver.disconnect();
+                if (list) scheduleNative();
+            }
         });
         life.observe(doc.body, { childList: true, subtree: true });
         watchedList = doc.getElementById('world_popup_entries_list');
