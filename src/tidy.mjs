@@ -1,3 +1,4 @@
+import { createScrollProbe } from './scrollProbe.mjs';
 // 界面格：把酒馆里不常用的按钮和设置收起来（照「砚台 · 界面整理」的功能自己重写，没有复制它的代码）。
 // 只加 / 去掉咱们自己的 class、自己插的折叠头，和扩展页上记得住原值的几条行内样式；关掉或「恢复原界面」就全部还原。
 // 藏起来只是看不见，插件照常运行。聊天内容一概不看。
@@ -126,6 +127,7 @@ export function createTidy(host) {
     const save = () => { ctx().extensionSettings[TIDY] = s; ctx().saveSettingsDebounced?.(); };
     let rerender = null; let dead = false; let queued = false; let frame = null;
     let style = null;
+    const scrollProbe = createScrollProbe(doc, () => rerender?.());
 
     // —— 记账：加过的 class、改过的行内样式、挪过的菜单项、插进去的东西，还原时一样样退回去 ——
     const classes = new Map(); // 元素 → Set(class)
@@ -610,6 +612,12 @@ export function createTidy(host) {
             check('启用', st.pageLite, v => change(x => { x.pageLite = v; }), '减少面板的背景模糊、盒子阴影和文字阴影，外观会简化；关闭恢复主题效果。'),
             h('p', { class: 'tvrm-note' }, '针对滑动后页面迟迟才动的情况，独立于界面整理和聊天空白修复。需要在 TT 手机上开关对比；不能消除其他插件阻塞或系统手势等待。')));
 
+        kids.push(part('scrollProbe', '滑动延迟检测', scrollProbe.running ? '正在记录 · 60 秒后自动停止' : '记录角色 / 人设持续滑动',
+            h('p', { class: 'tvrm-note' }, '点开始后去角色和人设页持续滑动，再回来停止并复制结果。只记录事件计数和时间，不读取内容。'),
+            h('div', { class: 'tvrm-actions' }, btn(scrollProbe.running ? '停止检测' : '开始检测', () => scrollProbe.running ? scrollProbe.stop() : scrollProbe.start()),
+                btn('复制检测结果', async () => { scrollProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(scrollProbe.report()); toast('success', '检测结果已复制'); } catch { toast('warning', '请在下方框内长按复制检测结果'); } })),
+            h('textarea', { class: 'text_pole', readonly: true, rows: 5 }, scrollProbe.report())));
+
         kids.push(part('fullscreen', '页面全屏', fullscreenElement() || nativeFullscreen ? '已全屏' : '让酒馆占满屏幕',
             h('div', { class: 'tvrm-actions' }, btn(fullscreenElement() || nativeFullscreen ? '退出全屏' : '进入全屏', () => toggleFullscreen())),
             h('p', { class: 'tvrm-note' }, '独立于界面整理。能否隐藏手机顶部状态栏和底部横条，取决于 TT / 浏览器的全屏支持。')));
@@ -618,5 +626,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }
