@@ -71,8 +71,8 @@ const CSS = `
 .tvrm-tidy-gone{display:none!important}
 .tvrm-tidy-slim{flex:0 0 0!important;width:0!important;min-width:0!important;margin-inline:0!important;padding-inline:0!important}
 .tvrm-tidy-more{border-top:1px solid var(--SmartThemeBorderColor,#7775);margin-top:4px;padding-top:2px}
-.tvrm-tidy-dots{display:flex!important;justify-content:center;align-items:center;cursor:pointer;padding:4px 0!important;opacity:.7}
-.tvrm-tidy-dots.is-open{opacity:1}
+.tvrm-tidy-dots{display:flex!important;justify-content:center;align-items:center;width:100%;box-sizing:border-box;cursor:pointer;padding:6px 0!important;margin:0!important;opacity:.7;border-radius:6px;color:inherit}
+.tvrm-tidy-dots.is-open{opacity:1;background:color-mix(in srgb,var(--SmartThemeBodyColor,#888) 8%,transparent)}
 .tvrm-tidy-more-list{display:flex;flex-direction:column;font-size:.88em}
 .tvrm-tidy-more-list[hidden]{display:none!important}
 .tvrm-tidy-topmore{display:flex;align-items:center;cursor:pointer}
@@ -85,9 +85,11 @@ const CSS = `
 .tvrm-tidy-fold small{opacity:.7;font-size:.8em}
 .tvrm-tidy-fold[hidden]{display:none!important}
 .tvrm-tidy-more-head.is-open{border-bottom-left-radius:2px}
-.tvrm-tidy-sub{font-size:.92em;border-left:2px solid var(--SmartThemeBorderColor,#7775);padding-left:6px;box-sizing:border-box}
+.tvrm-tidy-extbox{display:flex;flex-direction:column;width:100%}
+.tvrm-tidy-extbody{display:block;margin-left:14px;padding-left:6px;border-left:2px solid var(--SmartThemeBorderColor,#7775);box-sizing:border-box}
+.tvrm-tidy-sub{font-size:.92em;width:100%;box-sizing:border-box}
 .tvrm-tidy-sub .inline-drawer-header{background:color-mix(in srgb,var(--SmartThemeBodyColor,#888) 4%,transparent)!important;border-color:color-mix(in srgb,var(--SmartThemeBorderColor,#7775) 55%,transparent)!important;padding-block:5px!important;min-height:0!important}
-.tvrm-tidy-more-tail{font:inherit;font-size:.85em;color:var(--SmartThemeBodyColor,inherit);opacity:.75;cursor:pointer;background:none;border:0;border-left:2px solid var(--SmartThemeBorderColor,#7775);text-align:left;padding:6px 10px;margin:0 0 10px 14px!important;width:calc(100% - 14px)!important;box-sizing:border-box}
+.tvrm-tidy-more-tail{font:inherit;font-size:.85em;color:var(--SmartThemeBodyColor,inherit);opacity:.75;cursor:pointer;background:none;border:0;text-align:left;padding:6px 4px;margin:0 0 10px;box-sizing:border-box}
 @keyframes tvrm-tidy-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 @keyframes tvrm-tidy-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
 .tvrm-tidy-in{animation:tvrm-tidy-in .24s ease-out}
@@ -126,7 +128,8 @@ export function createTidy(host) {
     const styles = new Map(); // 元素 → Map(属性 → [原值, 原优先级])
     const moved = []; // [元素, 原位置占位]
     const added = new Set(); // 咱们插进页面的元素（⋯ 折叠、折叠头……）
-    const wandMeta = new WeakMap(); // 收进 ⋯ 的扩展菜单项 → 收之前的名字和认法
+    const wandMeta = new WeakMap(); // 收进 ⋯ 的扩展菜单项、收进盒子的扩展程序 → 收之前的名字和认法
+    const dotsToggle = new WeakMap(); // ⋯ → 点它做什么
     const bare = new Map(); // 元素 → 原来有没有 class / style 属性（没有的，退回去时把空属性也去掉）
     const note = (el, attr) => { if (!bare.has(el)) bare.set(el, {}); bare.get(el)[attr] ??= !el.hasAttribute(attr); };
     function addClass(el, c) { if (!el) return; note(el, 'class'); if (!classes.has(el)) classes.set(el, new Set()); if (!el.classList.contains(c)) { el.classList.add(c); classes.get(el).add(c); } }
@@ -211,7 +214,10 @@ export function createTidy(host) {
                 if (label) list.push({ key: keyOf(el, label, id), label, el, mine: el.id === 'tvrm-drawer' || !!el.querySelector('#tvrm-drawer') });
             }
         }
-        return uniq(list);
+        const out = uniq(list);
+        // 已经收进盒子的也列出来（名字、认法用收进去之前记下的）
+        for (const m of moved) if (m[2] === 'ext' && wandMeta.has(m[0])) out.push({ ...wandMeta.get(m[0]) });
+        return out;
     }
 
     // —— 做：按设置把页面整理好（每次先全部退回去再重新整理，不会越叠越多） ——
@@ -228,14 +234,15 @@ export function createTidy(host) {
     // 收进 ⋯：选项菜单（☰）和扩展菜单（魔法棒）共用。挪进最下面一个只有三个点的折叠里，点开字小一号；原位置留个记号，还原时放回去
     function dotsBox(box, els, openKey, kind, tag) {
         const more = doc.createElement('div'); more.className = 'tvrm-tidy-more';
-        const head = doc.createElement(tag); head.className = 'interactable tvrm-tidy-dots' + (tag === 'div' ? ' list-group-item' : '');
+        const head = doc.createElement(tag); head.className = 'interactable tvrm-tidy-dots'; // 两个菜单长一样：不挂主题给菜单项的样式
         head.setAttribute('role', 'button'); head.tabIndex = 0; head.title = '更多';
         const icon = doc.createElement('i'); icon.className = 'fa-lg fa-solid fa-ellipsis';
         head.append(icon);
         const list = doc.createElement('div'); list.className = 'tvrm-tidy-more-list';
         const show = () => { list.hidden = !S()[openKey]; head.classList.toggle('is-open', !!S()[openKey]); };
-        head.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); S()[openKey] = !S()[openKey]; save(); show(); });
-        head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') head.click(); });
+        // 点击在 init 里最早一步接住（扩展菜单在 TauriTavern 里一点里面任何地方就关，那个判断比这里早）
+        dotsToggle.set(head, () => { S()[openKey] = !S()[openKey]; save(); show(); });
+        head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dotsToggle.get(head)?.(); } });
         more.append(head, list); box.append(more); added.add(more);
         for (const el of els) { const mark = doc.createComment('tvrm-tidy'); el.before(mark); moved.push([el, mark, kind]); list.append(el); }
         show();
@@ -309,40 +316,45 @@ export function createTidy(host) {
         for (const r of roots) { addClass(r, 'tvrm-tidy-col'); setStyle(r, 'display', 'contents'); }
         for (const it of items) { addClass(it.el, 'tvrm-tidy-row'); setStyle(it.el, 'order', String(extRank(it, S().extSeen))); }
         for (const r of roots) for (const el of r.children) if (el.classList.contains('extension_container') && !el.children.length && !el.textContent.trim()) addClass(el, 'tvrm-tidy-gone');
-        // 收起来的扩展程序：自己的面板不能收
+        // 咱们的面板真的挪到最前面（有的主题 / TauriTavern 里排序不生效，光靠 order 排不动）
+        const mine = items.find(it => it.mine)?.el;
+        const put = (el, where) => { const mark = doc.createComment('tvrm-tidy'); el.before(mark); moved.push([el, mark, 'ext']); where(el); };
+        if (mine && roots[0].firstElementChild !== mine) put(mine, el => roots[0].prepend(el));
+        // 收起来的扩展程序：真的挪进一个盒子（标题 + 里面一列 + 底下「收起」），放在咱们面板正下方；自己的面板不能收
         const folded = items.filter(it => !it.mine && S().extFolded.includes(it.key));
         const extras = S().foldExtras ? extrasRows(parent, roots) : [];
         const n = folded.length + (extras.length ? 1 : 0);
         if (!n) return;
-        // 展开 / 收起只改这几个元素的 class，不整页重排（整页重排会跳）；展开的往下长出来，比外面的小一号、底色淡一点
-        const sub = [...folded.map(it => it.el), ...extras];
+        const box = doc.createElement('div'); box.className = 'tvrm-tidy-row tvrm-tidy-extbox'; added.add(box);
         const head = fold(`收起的扩展程序（${n}）`, null, S().extOpen, () => toggleMore());
-        head.classList.add('tvrm-tidy-row', 'tvrm-tidy-more-head'); roots[0].prepend(head); setStyle(head, 'order', '100');
-        const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-row tvrm-tidy-more-tail'; tail.textContent = '▴ 收起';
+        head.classList.add('tvrm-tidy-more-head');
+        const body = doc.createElement('div'); body.className = 'tvrm-tidy-extbody';
+        const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-more-tail'; tail.textContent = '▴ 收起';
         tail.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); toggleMore(); });
-        added.add(tail); roots[0].append(tail); setStyle(tail, 'order', '1999'); setStyle(tail, 'margin-inline-start', '14px'); setStyle(tail, 'width', 'calc(100% - 14px)');
-        folded.forEach((it, i) => setStyle(it.el, 'order', String(200 + i)));
-        extras.forEach((el, i) => setStyle(el, 'order', String(1000 + i)));
-        for (const el of sub) { addClass(el, 'tvrm-tidy-sub'); setStyle(el, 'margin-inline-start', '14px'); setStyle(el, 'width', 'calc(100% - 14px)'); }
+        box.append(head, body);
+        if (mine) mine.after(box); else roots[0].prepend(box);
+        setStyle(box, 'order', '100');
+        for (const it of folded) { wandMeta.set(it.el, { ...it, moved: true }); put(it.el, el => body.append(el)); addClass(it.el, 'tvrm-tidy-sub'); }
+        for (const el of extras) { put(el, x => body.append(x)); addClass(el, 'tvrm-tidy-sub'); }
+        body.append(tail);
+        // 展开 / 收起只动这个盒子（不整页重排，不跳）；里面的往下长出来，比外面的小一号、底色淡一点
         const show = open => {
             head.querySelector('.tvrm-tidy-arrow').textContent = open ? '▾' : '▸';
             head.classList.toggle('is-open', open);
-            for (const el of [...sub, tail]) open ? dropClass(el, 'tvrm-tidy-gone') : addClass(el, 'tvrm-tidy-gone');
+            open ? dropClass(body, 'tvrm-tidy-gone') : addClass(body, 'tvrm-tidy-gone');
         };
         let timer = null;
         function toggleMore() {
             const open = S().extOpen = !S().extOpen; save();
             clearTimeout(timer);
             if (open) {
-                show(true);
-                for (const el of [...sub, tail]) { dropClass(el, 'tvrm-tidy-out'); addClass(el, 'tvrm-tidy-in'); }
-                timer = setTimeout(() => { if (head.isConnected) for (const el of [...sub, tail]) dropClass(el, 'tvrm-tidy-in'); }, 260);
+                show(true); dropClass(body, 'tvrm-tidy-out'); addClass(body, 'tvrm-tidy-in');
+                timer = setTimeout(() => { if (box.isConnected) dropClass(body, 'tvrm-tidy-in'); }, 260);
             } else {
-                for (const el of [...sub, tail]) { dropClass(el, 'tvrm-tidy-in'); addClass(el, 'tvrm-tidy-out'); }
+                dropClass(body, 'tvrm-tidy-in'); addClass(body, 'tvrm-tidy-out');
                 timer = setTimeout(() => {
-                    if (!head.isConnected) return; // 这期间整理过一遍（或关掉了），不管了
-                    for (const el of [...sub, tail]) dropClass(el, 'tvrm-tidy-out');
-                    show(false);
+                    if (!box.isConnected) return; // 这期间整理过一遍（或关掉了），不管了
+                    dropClass(body, 'tvrm-tidy-out'); show(false);
                     // 从底下点的收起：标题要是跑到屏幕上面去了，轻轻滚回到标题，别让人找不着
                     if (head.getBoundingClientRect?.().top < 0) head.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
                 }, 160);
@@ -399,6 +411,11 @@ export function createTidy(host) {
     function init() {
         style = doc.createElement('style'); style.id = 'tvrm-tidy-style'; style.textContent = CSS; doc.head.append(style);
         // 魔法棒、扩展菜单是点开时才填的，点它们的时候再看一眼
+        // ⋯ 的点击在最外层、最早一步接住，菜单自己「点里面就关」的判断收不到这次点击
+        doc.defaultView.addEventListener('click', e => {
+            const dots = e.target.closest?.('.tvrm-tidy-dots'); if (!dots || !dotsToggle.has(dots)) return;
+            e.preventDefault(); e.stopImmediatePropagation(); dotsToggle.get(dots)();
+        }, true);
         doc.addEventListener('click', e => { if (e.target.closest?.('#extensionsMenuButton,#extensions-settings-button > .drawer-toggle,#user-settings-button > .drawer-toggle,#options_button')) schedule(); }, true);
         host.on?.('APP_READY', schedule);
         apply();

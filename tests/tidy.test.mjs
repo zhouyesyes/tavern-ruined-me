@@ -106,36 +106,40 @@ test('开了：顶部按钮、三横菜单、魔法棒、扩展页、用户设�
     assert.ok(!gone(doc.getElementById('sd_wand_container')));
     doc.querySelector('#extensionsMenu .tvrm-tidy-dots').click();
     assert.ok(!wandMore.hidden);
-    // 扩展页：一列；咱们的面板在最上面不能收；Assets 收进「更多」；空容器藏掉；Extras API 也收
+    // 扩展页：一列；咱们的面板真的挪到最前面；Assets、Extras API 真的挪进「收起的扩展程序」盒子，盒子在咱们面板正下方；空容器藏掉
     const order = id => Number(doc.getElementById(id).style.getPropertyValue('order'));
-    assert.equal(doc.getElementById('extensions_settings').style.getPropertyValue('display'), 'contents');
-    assert.ok(order('tvrm-drawer') < order('regex_container'));
+    const col1 = doc.getElementById('extensions_settings');
+    assert.equal(col1.style.getPropertyValue('display'), 'contents');
+    assert.equal(col1.firstElementChild.id, 'tvrm-drawer');
+    const box = col1.children[1];
+    assert.ok(box.classList.contains('tvrm-tidy-extbox'));
+    const body = box.querySelector('.tvrm-tidy-extbody');
+    assert.deepEqual([...body.children].map(e => e.id || e.className.split(' ')[0]), ['assets_container', 'wide100p', 'extras-head', 'extras-row', 'tvrm-tidy-more-tail']);
     assert.ok(order('regex_container') < order('th'));
     assert.ok(order('th') < order('other_one'));
-    assert.ok(gone(doc.getElementById('assets_container')));
-    assert.ok(!gone(doc.getElementById('tvrm-drawer')));
+    assert.ok(gone(body));
     assert.ok(gone(doc.getElementById('sd_container')));
-    assert.ok(gone(doc.querySelector('.extras-row')));
-    const head = doc.querySelector('#extensions_settings > .tvrm-tidy-fold');
+    const head = box.querySelector('.tvrm-tidy-fold');
     assert.match(head.textContent, /收起的扩展程序（2）/);
     // 用户设置：两段折起来
     assert.ok(gone(doc.querySelector('[name="themeElements"] > div:not(.tvrm-tidy-fold)')));
-    // 点开「收起的扩展程序」：原地展开（不重排整页），收着的那几个挂上「小一号、淡底色」，底下多一个「收起」
-    const tail = doc.querySelector('.tvrm-tidy-more-tail');
-    assert.ok(gone(tail));
+    // 面板里收进盒子的也照样列着、勾着
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    assert.ok([...panel.querySelectorAll('.tvrm-tidy-check')].find(l => l.textContent === 'Assets')?.querySelector('input').checked);
+    panel.remove();
+    // 点开：只动这个盒子（不重建），里面的挂上「小一号、淡底色」，底下有「收起」
+    const tail = body.querySelector('.tvrm-tidy-more-tail');
     head.click();
-    assert.equal(doc.querySelector('#extensions_settings > .tvrm-tidy-fold'), head); // 没有重建
-    assert.ok(!gone(doc.getElementById('assets_container')));
+    assert.equal(col1.children[1], box); // 没有重建
+    assert.ok(!gone(body));
     assert.ok(doc.getElementById('assets_container').classList.contains('tvrm-tidy-sub'));
     assert.ok(!doc.getElementById('regex_container').classList.contains('tvrm-tidy-sub'));
-    assert.ok(!gone(tail));
     assert.equal(head.querySelector('.tvrm-tidy-arrow').textContent, '▾');
     // 从底下收起：动画放完才藏
     tail.click();
-    assert.ok(!gone(doc.getElementById('assets_container')));
+    assert.ok(!gone(body));
     await new Promise(r => setTimeout(r, 220));
-    assert.ok(gone(doc.getElementById('assets_container')));
-    assert.ok(gone(tail));
+    assert.ok(gone(body));
     assert.equal(head.querySelector('.tvrm-tidy-arrow').textContent, '▸');
     head.click(); // 再开着关掉整理，也要退干净
     // 关掉：页面和原来一模一样（菜单项回到原位置、行内样式和 class 都退回去）
@@ -246,4 +250,19 @@ test('滑动更顺（试验）：开了挂上，关了去掉', () => {
     tidy.settings().smooth = false; tidy.apply();
     assert.ok(!doc.body.classList.contains('tvrm-tidy-smooth'));
     assert.equal(normalizeTidy({}).smooth, false);
+});
+
+test('扩展菜单点 ⋯ 不会把整个菜单关掉（TauriTavern 的菜单点里面任何地方就关）', () => {
+    const { doc, tidy } = setup({ on: true, hideWand: ['id:third_party'] });
+    tidy.init();
+    const menu = doc.getElementById('extensionsMenu');
+    menu.style.display = 'flex';
+    // 照 TauriTavern popup-menu.js：菜单上挂一个「捕获阶段」的点击，点里面任何东西就关
+    menu.addEventListener('click', () => { menu.style.display = 'none'; }, { capture: true });
+    const dots = menu.querySelector('.tvrm-tidy-dots');
+    dots.querySelector('i').dispatchEvent(new doc.defaultView.MouseEvent('click', { bubbles: true }));
+    assert.equal(menu.style.display, 'flex');
+    assert.ok(!menu.querySelector('.tvrm-tidy-more-list').hidden);
+    // 两个菜单的 ⋯ 长一样（都不挂菜单项自己的样式）
+    assert.ok(!dots.classList.contains('list-group-item'));
 });
