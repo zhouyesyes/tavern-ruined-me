@@ -199,7 +199,7 @@ test('后加进来的魔法棒入口也会被认出来、按设置收起', async
     tidy.init();
     const el = doc.createElement('div'); el.id = 'late'; el.className = 'list-group-item'; el.innerHTML = '<span>后来的</span>';
     doc.getElementById('extensionsMenu').append(el);
-    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 10)); // DOM 观察后在下一帧批量整理
     assert.equal(el.parentElement.className, 'tvrm-tidy-more-list');
 });
 
@@ -265,4 +265,120 @@ test('扩展菜单点 ⋯ 不会把整个菜单关掉（TauriTavern 的菜单点
     assert.ok(!menu.querySelector('.tvrm-tidy-more-list').hidden);
     // 两个菜单的 ⋯ 长一样（都不挂菜单项自己的样式）
     assert.ok(!dots.classList.contains('list-group-item'));
+});
+
+test('前五项和总开关一起默认折叠，独立功能放外面', () => {
+    const { doc, tidy } = setup(); tidy.init();
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    const groups = [...panel.children];
+    assert.equal(groups.length, 5);
+    const group = groups[0];
+    assert.equal(group.open, false);
+    assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
+    assert.ok([...group.querySelectorAll('label')].some(x => x.textContent === '开启界面整理'));
+    assert.ok(!group.textContent.includes('滑动空白修复'));
+    assert.ok(!group.textContent.includes('页面全屏'));
+    tidy.destroy();
+});
+
+test('总开关和恢复原界面只管前五项，独立功能不受砚台影响', () => {
+    const { doc, tidy } = setup({ on: false, smooth: true, regexFit: true }, '<style id="yt-interface-active-style"></style>');
+    tidy.init();
+    for (const cls of ['tvrm-tidy-smooth', 'tvrm-tidy-regex']) assert.ok(doc.body.classList.contains(cls));
+    tidy.restore();
+    for (const cls of ['tvrm-tidy-smooth', 'tvrm-tidy-regex']) assert.ok(doc.body.classList.contains(cls));
+    tidy.destroy();
+    assert.ok(!doc.body.classList.contains('tvrm-tidy-smooth'));
+});
+
+const tick = () => new Promise(r => setTimeout(r, 0));
+const button = (box, text) => [...box.querySelectorAll('button')].find(x => x.textContent === text);
+test('页面全屏：进入、系统退出同步、再次进入和退出，不依赖整理开关', async () => {
+    const { doc, tidy } = setup();
+    let current = null;
+    Object.defineProperty(doc, 'fullscreenElement', { get: () => current });
+    const sync = () => doc.dispatchEvent(new doc.defaultView.Event('fullscreenchange'));
+    doc.documentElement.requestFullscreen = async () => { current = doc.documentElement; sync(); };
+    doc.exitFullscreen = async () => { current = null; sync(); };
+    tidy.init(); const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    button(panel, '进入全屏').click(); await tick();
+    assert.equal(current, doc.documentElement); assert.ok(button(panel, '退出全屏'));
+    current = null; sync(); assert.ok(button(panel, '进入全屏'));
+    button(panel, '进入全屏').click(); await tick();
+    button(panel, '退出全屏').click(); await tick();
+    assert.equal(current, null); assert.equal(tidy.settings().on, false);
+    tidy.destroy();
+});
+
+test('页面全屏：不支持或请求被拒绝时明确提示，可以重试', async () => {
+    const { doc, tidy, toasts } = setup(); tidy.init();
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    button(panel, '进入全屏').click(); await tick();
+    assert.match(toasts.at(-1), /未开放页面全屏接口/);
+    doc.documentElement.requestFullscreen = async () => { throw new Error('denied'); };
+    button(panel, '进入全屏').click(); await tick();
+    assert.match(toasts.at(-1), /denied/); assert.ok(button(panel, '进入全屏'));
+    tidy.destroy();
+});
+
+test('页面全屏：Tauri 窗口接口进入和退出', async () => {
+    const { doc, tidy } = setup(); let full = false;
+    doc.defaultView.__TAURI__ = { window: { getCurrentWindow: () => ({ isFullscreen: async () => full, setFullscreen: async v => { full = v; } }) } };
+    tidy.init(); const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    button(panel, '进入全屏').click(); await tick(); assert.equal(full, true);
+    button(panel, '退出全屏').click(); await tick(); assert.equal(full, false);
+    tidy.destroy();
+});
+
+test('关掉整理后不监听动态菜单，也不会因菜单点击重绘设置', async () => {
+    const { doc, tidy } = setup({ on: false }); tidy.init();
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    const initial = panel.firstElementChild;
+    doc.getElementById('extensionsMenu').append(doc.createElement('button'));
+    const trigger = doc.createElement('button'); trigger.id = 'options_button'; doc.body.append(trigger); trigger.click();
+    await tick(); await tick();
+    assert.equal(panel.firstElementChild, initial);
+    tidy.destroy();
+});
+
+test('同一帧连续触发只整理一次，销毁会取消未执行的整理', async () => {
+    const { doc, tidy } = setup({ on: true });
+    let task = null, cancelled = false;
+    doc.defaultView.requestAnimationFrame = fn => { assert.equal(task, null); task = fn; return 123; };
+    doc.defaultView.cancelAnimationFrame = id => { assert.equal(id, 123); cancelled = true; task = null; };
+    tidy.init();
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    const trigger = doc.createElement('button'); trigger.id = 'options_button'; doc.body.append(trigger);
+    const initial = panel.firstElementChild;
+    trigger.click(); trigger.click(); trigger.click();
+    assert.equal(panel.firstElementChild, initial); assert.ok(task);
+    const run = task; task = null; run();
+    assert.notEqual(panel.firstElementChild, initial);
+    trigger.click(); tidy.destroy(); assert.equal(cancelled, true);
+});
+
+test('设置搜索只在开始和清空时整理，连续输入不反复拆建其他页面', async () => {
+    const { doc, tidy } = setup({ on: true }); tidy.init();
+    const search = doc.getElementById('settingsSearch');
+    const input = value => { search.value = value; search.dispatchEvent(new doc.defaultView.Event('input')); };
+    input('字'); await new Promise(r => setTimeout(r, 10));
+    assert.equal(doc.querySelector('[name="themeElements"] > .tvrm-tidy-fold'), null);
+    const menu = doc.querySelector('#options .tvrm-tidy-more');
+    for (const text of ['字号', '字号设', '字号设置']) { input(text); await tick(); }
+    assert.equal(doc.querySelector('#options .tvrm-tidy-more'), menu);
+    input(''); await new Promise(r => setTimeout(r, 10));
+    assert.ok(doc.querySelector('[name="themeElements"] > .tvrm-tidy-fold'));
+    tidy.destroy();
+});
+
+
+test('页面减负独立开关，恢复原界面保留状态，关闭和销毁恢复主题样式', () => {
+    const { doc, tidy } = setup({ on: false, pageLite: true }); tidy.init();
+    assert.equal(normalizeTidy({}).pageLite, false);
+    assert.ok(doc.body.classList.contains('tvrm-tidy-page-lite'));
+    tidy.restore(); assert.ok(doc.body.classList.contains('tvrm-tidy-page-lite'));
+    tidy.settings().pageLite = false; tidy.apply();
+    assert.ok(!doc.body.classList.contains('tvrm-tidy-page-lite'));
+    tidy.settings().pageLite = true; tidy.apply(); tidy.destroy();
+    assert.ok(!doc.body.classList.contains('tvrm-tidy-page-lite'));
 });
