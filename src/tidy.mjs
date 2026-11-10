@@ -96,9 +96,8 @@ const CSS = `
 .tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
 @media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out,.tvrm-tidy-left{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
-/* 滑动更顺（试验）：聊天区单独一层（滑的时候直接挪这一层，不用每次重画）；每条消息各算各的（一条变了不牵动整个聊天） */
-.tvrm-tidy-smooth #chat{will-change:transform;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
-.tvrm-tidy-smooth #chat>.mes{contain:layout style}
+/* 滑动空白修复（试验）：让屏外消息继续参与渲染，关闭后恢复主题行为。 */
+.tvrm-tidy-smooth #chat .mes{content-visibility:visible!important;contain-intrinsic-size:none!important}
 @media (max-width:600px),(pointer:coarse) and (max-width:1200px){
  .tvrm-tidy-regex #regex_container{max-width:100%;overflow-x:hidden;box-sizing:border-box}
  .tvrm-tidy-regex #regex_container :where(input,select,textarea){max-width:100%;min-width:0;box-sizing:border-box}
@@ -521,9 +520,9 @@ export function createTidy(host) {
             check('启用', st.foldUser, v => change(x => { x.foldUser = v; })),
             USER_PARTS.filter(p => doc.querySelector(p.sel)).map(p => check(p.name, st.userFolded.includes(p.key), v => change(x => { x.userFolded = flip(x.userFolded, p.key, v); })))));
 
-        kids.push(part('smooth', '滑动更顺（试验）', st.smooth ? '开着' : '关着',
-            check('启用', st.smooth, v => change(x => { x.smooth = v; }), '聊天区单独一层，每条消息各算各的。开着、关着各滑一滑比一比，没变化或更卡就关掉'),
-            h('p', { class: 'tvrm-note' }, '要是开着以后消息里的弹出菜单、悬浮的东西位置不对，也关掉告诉 cc。')));
+        kids.push(part('smooth', '滑动空白修复（试验）', st.smooth ? '开着' : '关着',
+            check('启用', st.smooth, v => change(x => { x.smooth = v; }), '让屏幕外的消息也参与渲染，尝试减少滑动时先空白再出现。保留原来的开关状态。'),
+            h('p', { class: 'tvrm-note' }, '长聊天可能增加内存和首次绘制开销；如果没有改善或变卡，可以关闭。')));
 
         kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
             check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));
