@@ -474,7 +474,14 @@ export function createTidy(host) {
     // 全屏只在点击时请求，不保存为自动进入；退出系统全屏时同步按钮。
     let fullscreenBusy = false;
     let nativeFullscreen = false;
-    const nativeWindow = () => doc.defaultView?.__TAURI__?.window?.getCurrentWindow?.();
+    // TT 的桌面窗口接口在移动端仍可能存在，但不能用于 iOS 元素全屏。
+    // 先同步判定平台，避免 await 原生探测消耗用户手势，再去请求网页全屏。
+    const mobileHost = () => {
+        const nav = doc.defaultView?.navigator;
+        return /iPhone|iPad|iPod|Android/i.test(nav?.userAgent || '')
+            || (nav?.platform === 'MacIntel' && nav?.maxTouchPoints > 1);
+    };
+    const nativeWindow = () => mobileHost() ? null : doc.defaultView?.__TAURI__?.window?.getCurrentWindow?.();
     const fullscreenElement = () => doc.fullscreenElement || doc.webkitFullscreenElement;
     const fullscreenChanged = () => rerender?.();
     async function syncNativeFullscreen() {
@@ -503,13 +510,13 @@ export function createTidy(host) {
                 const root = doc.documentElement;
                 const request = root.requestFullscreen || root.webkitRequestFullscreen;
                 if (!request) {
-                    toast('warning', '当前 TT / 浏览器未开放页面全屏接口，插件无法隐藏系统状态栏和底部横条。请使用 TT 自带的全屏设置；Safari 可尝试添加到主屏幕后打开。');
+                    toast('warning', '当前环境未提供页面全屏接口。TT iOS 使用网页元素全屏，请核对 TT 和 iOS 版本；普通安全区布局无法靠 CSS 扩展到系统栏。');
                     return;
                 }
                 await request.call(root);
             }
         } catch (e) {
-            toast('warning', '未能切换全屏：' + (e?.message || '当前环境不支持，请检查 TT 的全屏设置'));
+            toast('warning', '未能切换全屏：' + (e?.message || '当前环境未能完成请求'));
         } finally {
             fullscreenBusy = false;
             rerender?.();

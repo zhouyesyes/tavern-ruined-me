@@ -314,7 +314,7 @@ test('页面全屏：不支持或请求被拒绝时明确提示，可以重试',
     const { doc, tidy, toasts } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     button(panel, '进入全屏').click(); await tick();
-    assert.match(toasts.at(-1), /未开放页面全屏接口/);
+    assert.match(toasts.at(-1), /未提供页面全屏接口/);
     doc.documentElement.requestFullscreen = async () => { throw new Error('denied'); };
     button(panel, '进入全屏').click(); await tick();
     assert.match(toasts.at(-1), /denied/); assert.ok(button(panel, '进入全屏'));
@@ -381,4 +381,17 @@ test('页面减负独立开关，恢复原界面保留状态，关闭和销毁�
     assert.ok(!doc.body.classList.contains('tvrm-tidy-page-lite'));
     tidy.settings().pageLite = true; tidy.apply(); tidy.destroy();
     assert.ok(!doc.body.classList.contains('tvrm-tidy-page-lite'));
+});
+
+
+test('TT iPhone 即使暴露桌面窗口接口也直接请求元素全屏', async () => {
+    const { doc, tidy } = setup(); let requests = 0; let nativeCalls = 0;
+    Object.defineProperty(doc.defaultView.navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X)' });
+    doc.defaultView.__TAURI__ = { window: { getCurrentWindow: () => { nativeCalls++; throw new Error('Plugin window not initialized'); } } };
+    doc.documentElement.requestFullscreen = () => { requests++; return Promise.resolve(); };
+    tidy.init(); const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    button(panel, '进入全屏').click();
+    assert.equal(requests, 1, '点击事件内同步发起全屏，保留用户激活');
+    await tick(); assert.equal(nativeCalls, 0);
+    tidy.destroy();
 });
