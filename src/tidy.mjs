@@ -33,13 +33,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: true,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: true, smooth: false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -94,6 +94,9 @@ const CSS = `
 .tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
 @media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out,.tvrm-tidy-left{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
+/* 滑动更顺（试验）：聊天区单独一层（滑的时候直接挪这一层，不用每次重画）；每条消息各算各的（一条变了不牵动整个聊天） */
+.tvrm-tidy-smooth #chat{will-change:transform;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.tvrm-tidy-smooth #chat>.mes{contain:layout style}
 @media (max-width:600px),(pointer:coarse) and (max-width:1200px){
  .tvrm-tidy-regex #regex_container{max-width:100%;overflow-x:hidden;box-sizing:border-box}
  .tvrm-tidy-regex #regex_container :where(input,select,textarea){max-width:100%;min-width:0;box-sizing:border-box}
@@ -370,6 +373,7 @@ export function createTidy(host) {
                 try { f(); } catch (e) { console.warn('[酒馆你害我不浅] 界面整理出错', e); }
             }
             if (S().regexFit) addClass(doc.body, 'tvrm-tidy-regex');
+            if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
         }
         watch();
     }
@@ -499,6 +503,10 @@ export function createTidy(host) {
         kids.push(part('user', '用户设置', '勾上的段落折起来，搜索设置时自动全部展开',
             check('启用', st.foldUser, v => change(x => { x.foldUser = v; })),
             USER_PARTS.filter(p => doc.querySelector(p.sel)).map(p => check(p.name, st.userFolded.includes(p.key), v => change(x => { x.userFolded = flip(x.userFolded, p.key, v); })))));
+
+        kids.push(part('smooth', '滑动更顺（试验）', st.smooth ? '开着' : '关着',
+            check('启用', st.smooth, v => change(x => { x.smooth = v; }), '聊天区单独一层，每条消息各算各的。开着、关着各滑一滑比一比，没变化或更卡就关掉'),
+            h('p', { class: 'tvrm-note' }, '要是开着以后消息里的弹出菜单、悬浮的东西位置不对，也关掉告诉 cc。')));
 
         kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
             check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));

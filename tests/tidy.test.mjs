@@ -238,3 +238,12 @@ test('排查信息：列出扩展页每一块的排序和显示方式', async ()
     assert.match(text, /div#extensions_settings\.- 父:/);
     assert.match(text, /「酒馆你害我不浅」 顺序:/);
 });
+
+test('滑动更顺（试验）：开了挂上，关了去掉', () => {
+    const { doc, tidy } = setup({ on: true, smooth: true });
+    tidy.init();
+    assert.ok(doc.body.classList.contains('tvrm-tidy-smooth'));
+    tidy.settings().smooth = false; tidy.apply();
+    assert.ok(!doc.body.classList.contains('tvrm-tidy-smooth'));
+    assert.equal(normalizeTidy({}).smooth, false);
+});
