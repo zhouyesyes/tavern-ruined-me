@@ -330,7 +330,7 @@ export function createTidy(host) {
         const mine = items.find(it => it.mine)?.el;
         const put = (el, where) => { const mark = doc.createComment('tvrm-tidy'); el.before(mark); moved.push([el, mark, 'ext']); where(el); };
         if (mine && roots[0].firstElementChild !== mine) put(mine, el => roots[0].prepend(el));
-        // 收起来的扩展程序：真的挪进一个盒子（标题 + 里面一列 + 底下「收起」），放在咱们面板正下方；自己的面板不能收
+        // 收起来的扩展程序：真的挪进一个盒子（标题 + 里面一列 + 底下「收起」），放到整个扩展列表末尾；自己的面板不能收
         const folded = items.filter(it => !it.mine && S().extFolded.includes(it.key));
         const extras = S().foldExtras ? extrasRows(parent, roots) : [];
         const n = folded.length + (extras.length ? 1 : 0);
@@ -342,8 +342,9 @@ export function createTidy(host) {
         const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-more-tail'; tail.textContent = '▴ 收起';
         tail.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); toggleMore(); });
         box.append(head, body);
-        if (mine) mine.after(box); else roots[0].prepend(box);
-        setStyle(box, 'order', '100');
+        // 同时调整实际 DOM 位置和 flex 顺序，兼容不遵循列内 order 的主题。
+        parent.append(box);
+        setStyle(box, 'order', '2147483647');
         for (const it of folded) { wandMeta.set(it.el, { ...it, moved: true }); put(it.el, el => body.append(el)); addClass(it.el, 'tvrm-tidy-sub'); }
         for (const el of extras) { put(el, x => body.append(x)); addClass(el, 'tvrm-tidy-sub'); }
         body.append(tail);
@@ -589,7 +590,7 @@ export function createTidy(host) {
 
         const exts = extItems().filter(e => !e.mine);
         group.push(part('ext', '扩展程序页', `收起 ${exts.filter(e => st.extFolded.includes(e.key)).length} 个`,
-            check('排成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '咱们的面板在最上面，然后是收起的、酒馆自带的、酒馆助手、其他插件'),
+            check('排成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '咱们的面板在最上面，然后是酒馆自带的、酒馆助手、其他插件，收起的在最下面'),
             $('extensions_url') ? check('附加 API（已弃用）也收起来', st.foldExtras, v => change(x => { x.foldExtras = v; })) : null,
             exts.length ? h('div', { class: 'tvrm-tidy-list' }, exts.map(e => check(e.label, st.extFolded.includes(e.key), v => change(x => { x.extFolded = flip(x.extFolded, e.key, v); })))) : h('p', { class: 'tvrm-note' }, '还没识别到。'),
             diagText ? h('textarea', { class: 'text_pole tvrm-tidy-diag', rows: '8', readonly: true }, diagText) : null,
