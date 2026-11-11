@@ -106,13 +106,15 @@ test('开了：顶部按钮、三横菜单、魔法棒、扩展页、用户设�
     assert.ok(!gone(doc.getElementById('sd_wand_container')));
     doc.querySelector('#extensionsMenu .tvrm-tidy-dots').click();
     assert.ok(!wandMore.hidden);
-    // 扩展页：一列；咱们的面板真的挪到最前面；Assets、Extras API 真的挪进「收起的扩展程序」盒子，盒子在咱们面板正下方；空容器藏掉
+    // 扩展页：一列；咱们的面板真的挪到最前面；Assets、Extras API 真的挪进「收起的扩展程序」盒子，盒子在整个扩展列表末尾；空容器藏掉
     const order = id => Number(doc.getElementById(id).style.getPropertyValue('order'));
     const col1 = doc.getElementById('extensions_settings');
     assert.equal(col1.style.getPropertyValue('display'), 'contents');
     assert.equal(col1.firstElementChild.id, 'tvrm-drawer');
-    const box = col1.children[1];
+    const parent = col1.parentElement;
+    const box = parent.lastElementChild;
     assert.ok(box.classList.contains('tvrm-tidy-extbox'));
+    assert.equal(box.style.getPropertyValue('order'), '2147483647');
     const body = box.querySelector('.tvrm-tidy-extbody');
     assert.deepEqual([...body.children].map(e => e.id || e.className.split(' ')[0]), ['assets_container', 'wide100p', 'extras-head', 'extras-row', 'tvrm-tidy-more-tail']);
     assert.ok(order('regex_container') < order('th'));
@@ -130,7 +132,7 @@ test('开了：顶部按钮、三横菜单、魔法棒、扩展页、用户设�
     // 点开：只动这个盒子（不重建），里面的挂上「小一号、淡底色」，底下有「收起」
     const tail = body.querySelector('.tvrm-tidy-more-tail');
     head.click();
-    assert.equal(col1.children[1], box); // 没有重建
+    assert.equal(parent.lastElementChild, box); // 没有重建
     assert.ok(!gone(body));
     assert.ok(doc.getElementById('assets_container').classList.contains('tvrm-tidy-sub'));
     assert.ok(!doc.getElementById('regex_container').classList.contains('tvrm-tidy-sub'));
@@ -271,7 +273,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 6);
+    assert.equal(groups.length, 4);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
@@ -282,11 +284,11 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
 });
 
 test('总开关和恢复原界面只管前五项，独立功能不受砚台影响', () => {
-    const { doc, tidy } = setup({ on: false, smooth: true, regexFit: true }, '<style id="yt-interface-active-style"></style>');
+    const { doc, tidy } = setup({ on: false, smooth: true }, '<style id="yt-interface-active-style"></style>');
     tidy.init();
-    for (const cls of ['tvrm-tidy-smooth', 'tvrm-tidy-regex']) assert.ok(doc.body.classList.contains(cls));
+    for (const cls of ['tvrm-tidy-smooth']) assert.ok(doc.body.classList.contains(cls));
     tidy.restore();
-    for (const cls of ['tvrm-tidy-smooth', 'tvrm-tidy-regex']) assert.ok(doc.body.classList.contains(cls));
+    for (const cls of ['tvrm-tidy-smooth']) assert.ok(doc.body.classList.contains(cls));
     tidy.destroy();
     assert.ok(!doc.body.classList.contains('tvrm-tidy-smooth'));
 });
@@ -372,18 +374,6 @@ test('设置搜索只在开始和清空时整理，连续输入不反复拆建�
 });
 
 
-test('页面减负独立开关，恢复原界面保留状态，关闭和销毁恢复主题样式', () => {
-    const { doc, tidy } = setup({ on: false, pageLite: true }); tidy.init();
-    assert.equal(normalizeTidy({}).pageLite, false);
-    assert.ok(doc.body.classList.contains('tvrm-tidy-page-lite'));
-    tidy.restore(); assert.ok(doc.body.classList.contains('tvrm-tidy-page-lite'));
-    tidy.settings().pageLite = false; tidy.apply();
-    assert.ok(!doc.body.classList.contains('tvrm-tidy-page-lite'));
-    tidy.settings().pageLite = true; tidy.apply(); tidy.destroy();
-    assert.ok(!doc.body.classList.contains('tvrm-tidy-page-lite'));
-});
-
-
 test('TT iPhone 即使暴露桌面窗口接口也直接请求元素全屏', async () => {
     const { doc, tidy } = setup(); let requests = 0; let nativeCalls = 0;
     Object.defineProperty(doc.defaultView.navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X)' });
@@ -394,4 +384,19 @@ test('TT iPhone 即使暴露桌面窗口接口也直接请求元素全屏', asyn
     assert.equal(requests, 1, '点击事件内同步发起全屏，保留用户激活');
     await tick(); assert.equal(nativeCalls, 0);
     tidy.destroy();
+});
+
+test('后加载的扩展始终在收起栏前面，关闭整理后不留下末尾盒子', async () => {
+    const { doc, tidy } = setup({ on: true }); tidy.init();
+    const root = doc.getElementById('extensions_settings2'), parent = root.parentElement;
+    const late = doc.createElement('div'); late.id = 'late-extension';
+    late.innerHTML = '<div class="inline-drawer-header"><b>后加载扩展</b></div>';
+    root.append(late);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const box = parent.lastElementChild;
+    assert.ok(box.classList.contains('tvrm-tidy-extbox'));
+    assert.ok(Number(late.style.order) < Number(box.style.order));
+    tidy.restore();
+    assert.equal(doc.querySelector('.tvrm-tidy-extbox'), null);
+    assert.equal(late.parentElement, root); tidy.destroy();
 });

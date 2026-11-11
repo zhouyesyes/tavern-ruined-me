@@ -10,6 +10,8 @@ import { parseModels, normalizeUrl } from './src/keys.mjs';
 import { createTidy } from './src/tidy.mjs';
 // 整个模块一起导入，按名字去取：酒馆旧一点、少导出一个名字时，插件照样能加载（逐个 import 少一个就整个插件加载失败、从扩展列表里消失）
 import * as oai from '../../../openai.js';
+import * as secrets from '../../../secrets.js';
+import { collectNativeApis } from './src/nativeApis.mjs';
 
 // 预设格接到酒馆（聊天补全预设）。照酒馆自己 openai.js / PromptManager.js 的做法：
 // - 当前预设名：oai_settings.preset_settings_openai；预设名 → 下拉选项值：openai_setting_names[name]
@@ -97,6 +99,13 @@ const keyKeeper = createKeyKeeper({
     getContext,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
     confirm: async text => !!await callGenericPopup(text, POPUP_TYPE.CONFIRM),
+    on: (name, fn) => { if (event_types[name]) eventSource.on(event_types[name], fn); },
+    nativeApis: () => collectNativeApis({
+        settings: oai.oai_settings,
+        profiles: getContext().extensionSettings.connectionManager?.profiles || [],
+        customSecretKey: secrets.SECRET_KEYS?.CUSTOM || 'api_key_custom',
+        readSecret: (key, id) => secrets.findSecret?.(key, id),
+    }),
     proxy: { list: () => (oai.proxies || []).map(p => ({ name: p.name, url: p.url, password: p.password })) }, // 扫描时读一下酒馆反代列表
     probe: async (url, key) => {
         const res = await fetch('/api/backends/chat-completions/status', {

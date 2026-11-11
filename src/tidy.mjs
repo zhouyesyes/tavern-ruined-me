@@ -34,13 +34,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: false, smooth: false, pageLite: false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth', 'pageLite']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -97,19 +97,9 @@ const CSS = `
 .tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
 @media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out,.tvrm-tidy-left{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
-/* 页面减负只改酒馆面板的绘制效果，不加触摸监听、图层隔离或滚动接管。 */
-.tvrm-tidy-page-lite :is(.drawer-content,#right-nav-panel,#left-nav-panel,#character_popup,#world_popup,dialog.popup),
-.tvrm-tidy-page-lite :is(.drawer-content,#right-nav-panel,#left-nav-panel,#character_popup,#world_popup,dialog.popup) :where(*){
- backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;text-shadow:none!important
-}
 /* 滑动空白修复（试验）：让屏外消息继续参与渲染，关闭后恢复主题行为。 */
 .tvrm-tidy-smooth #chat .mes{content-visibility:visible!important;contain-intrinsic-size:none!important}
-@media (max-width:600px),(pointer:coarse) and (max-width:1200px){
- .tvrm-tidy-regex #regex_container{max-width:100%;overflow-x:hidden;box-sizing:border-box}
- .tvrm-tidy-regex #regex_container :where(input,select,textarea){max-width:100%;min-width:0;box-sizing:border-box}
- .tvrm-tidy-regex #regex_container :where(.regex-script-label){flex-wrap:nowrap;min-width:0}
- .tvrm-tidy-regex #regex_container :where(.regex-script-label>.regex_script_name){flex:1 1 0%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-}`;
+`;
 
 export function createTidy(host) {
     const doc = host.document;
@@ -330,7 +320,7 @@ export function createTidy(host) {
         const mine = items.find(it => it.mine)?.el;
         const put = (el, where) => { const mark = doc.createComment('tvrm-tidy'); el.before(mark); moved.push([el, mark, 'ext']); where(el); };
         if (mine && roots[0].firstElementChild !== mine) put(mine, el => roots[0].prepend(el));
-        // 收起来的扩展程序：真的挪进一个盒子（标题 + 里面一列 + 底下「收起」），放在咱们面板正下方；自己的面板不能收
+        // 收起来的扩展程序：真的挪进一个盒子（标题 + 里面一列 + 底下「收起」），放到整个扩展列表末尾；自己的面板不能收
         const folded = items.filter(it => !it.mine && S().extFolded.includes(it.key));
         const extras = S().foldExtras ? extrasRows(parent, roots) : [];
         const n = folded.length + (extras.length ? 1 : 0);
@@ -342,8 +332,9 @@ export function createTidy(host) {
         const tail = doc.createElement('button'); tail.type = 'button'; tail.className = 'tvrm-tidy-more-tail'; tail.textContent = '▴ 收起';
         tail.addEventListener('click', e => { e.preventDefault(); e.stopImmediatePropagation(); toggleMore(); });
         box.append(head, body);
-        if (mine) mine.after(box); else roots[0].prepend(box);
-        setStyle(box, 'order', '100');
+        // 同时调整实际 DOM 位置和 flex 顺序，兼容不遵循列内 order 的主题。
+        parent.append(box);
+        setStyle(box, 'order', '2147483647');
         for (const it of folded) { wandMeta.set(it.el, { ...it, moved: true }); put(it.el, el => body.append(el)); addClass(it.el, 'tvrm-tidy-sub'); }
         for (const el of extras) { put(el, x => body.append(x)); addClass(el, 'tvrm-tidy-sub'); }
         body.append(tail);
@@ -402,9 +393,7 @@ export function createTidy(host) {
                 try { f(); } catch (e) { console.warn('[酒馆你害我不浅] 界面整理出错', e); }
             }
         }
-        if (S().regexFit) addClass(doc.body, 'tvrm-tidy-regex');
         if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
-        if (S().pageLite) addClass(doc.body, 'tvrm-tidy-page-lite');
         watch();
     }
 
@@ -589,7 +578,7 @@ export function createTidy(host) {
 
         const exts = extItems().filter(e => !e.mine);
         group.push(part('ext', '扩展程序页', `收起 ${exts.filter(e => st.extFolded.includes(e.key)).length} 个`,
-            check('排成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '咱们的面板在最上面，然后是收起的、酒馆自带的、酒馆助手、其他插件'),
+            check('排成一列', st.foldExt, v => change(x => { x.foldExt = v; }), '咱们的面板在最上面，然后是酒馆自带的、酒馆助手、其他插件，收起的在最下面'),
             $('extensions_url') ? check('附加 API（已弃用）也收起来', st.foldExtras, v => change(x => { x.foldExtras = v; })) : null,
             exts.length ? h('div', { class: 'tvrm-tidy-list' }, exts.map(e => check(e.label, st.extFolded.includes(e.key), v => change(x => { x.extFolded = flip(x.extFolded, e.key, v); })))) : h('p', { class: 'tvrm-note' }, '还没识别到。'),
             diagText ? h('textarea', { class: 'text_pole tvrm-tidy-diag', rows: '8', readonly: true }, diagText) : null,
@@ -604,13 +593,6 @@ export function createTidy(host) {
         kids.push(part('smooth', '滑动空白修复（试验）', st.smooth ? '开着' : '关着',
             check('启用', st.smooth, v => change(x => { x.smooth = v; }), '让屏幕外的消息也参与渲染，尝试减少滑动时先空白再出现。保留原来的开关状态。'),
             h('p', { class: 'tvrm-note' }, '长聊天可能增加内存和首次绘制开销；如果没有改善或变卡，可以关闭。')));
-
-        kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
-            check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));
-
-        kids.push(part('pageLite', '页面滑动减负（试验）', st.pageLite ? '开着 · 面板模糊和阴影已关闭' : '关着 · 角色、人设及其他面板共用',
-            check('启用', st.pageLite, v => change(x => { x.pageLite = v; }), '减少面板的背景模糊、盒子阴影和文字阴影，外观会简化；关闭恢复主题效果。'),
-            h('p', { class: 'tvrm-note' }, '针对滑动后页面迟迟才动的情况，独立于界面整理和聊天空白修复。需要在 TT 手机上开关对比；不能消除其他插件阻塞或系统手势等待。')));
 
         kids.push(part('scrollProbe', '滑动延迟检测', scrollProbe.running ? '正在记录 · 60 秒后自动停止' : '记录角色 / 人设持续滑动',
             h('p', { class: 'tvrm-note' }, '点开始后去角色和人设页持续滑动，再回来停止并复制结果。只记录事件计数和时间，不读取内容。'),
