@@ -2,7 +2,7 @@
 // host: document, getContext(), toast(kind,msg), confirm(text),
 //       proxy: { list() → [{name,url,password}] }   酒馆的反代列表（只在扫描时读，不往里加）
 //       probe(url, key) → 模型名数组（走酒馆服务器拉一次模型列表；不通就抛错）
-import { KEYS, newKey, maskKey, searchKeys, classifyField, autoName, scanSettings, sameKey, hostOf } from './keys.mjs';
+import { KEYS, newKey, maskKey, searchKeys, classifyField, autoName, scanSettings, sameKey, hostOf, normalizeUrl } from './keys.mjs';
 
 export function createKeyKeeper(host) {
     const doc = host.document;
@@ -45,19 +45,69 @@ export function createKeyKeeper(host) {
         } finally { busy.delete(k.id); save(); rerender?.(); }
     }
 
-    // 扫描：酒馆反代列表 + 所有插件设置里存的「地址 + 密钥」；已经在钥匙本里的标出来，不勾
-    function scan() {
+    let collectTimer = null; let collecting = false; let collectAgain = false;
+    let initialized = false; let disposed = false; let sourceError = false;
+    const sourceOf = f => f.path + '|' + normalizeUrl(f.url);
+    async function candidates() {
         const list = [];
         for (const p of host.proxy?.list?.() || []) if (p?.url && p.password) list.push({ source: '酒馆反代列表', path: '酒馆反代列表 › ' + p.name, name: p.name, url: p.url, key: p.password });
         list.push(...scanSettings(ctx().extensionSettings, [KEYS, 'tavern_ruined_me', 'tavern_ruined_me_presets']));
-        const mine = store().keys; const seen = new Set();
-        found = list.filter(f => { const id = f.url + '|' + f.key; if (seen.has(id)) return false; seen.add(id); return true; })
-            .map(f => { const have = mine.some(k => sameKey(k, f)); return { ...f, have, pick: !have && !!f.url }; })
-            .sort((a, b) => (!!b.url - !!a.url) || (a.have - b.have)); // 有地址的在前；没地址的默认不勾（多半不是拿来连 API 的）
-        rerender?.();
-        const fresh = found.filter(f => !f.have).length;
-        toast(fresh ? 'success' : 'info', found.length ? `找到 ${found.length} 条，其中 ${fresh} 条钥匙本里还没有` : '没找到存着地址和密钥的地方');
+        sourceError = false;
+        if (host.nativeApis) { try { list.push(...await host.nativeApis()); } catch { sourceError = true; } }
+        const seen = new Set();
+        return list.filter(f => {
+            const id = normalizeUrl(f.url) + '|' + f.key;
+            if (!f.key || seen.has(id)) return false;
+            seen.add(id); return true;
+        });
     }
+    function present(list) {
+        found = list.map(f => {
+            const have = store().keys.some(k => sameKey(k, f));
+            return { ...f, have, pick: !have && !!f.url };
+        }).sort((a, b) => (!!b.url - !!a.url) || (a.have - b.have));
+    }
+    async function scan() {
+        try {
+            present(await candidates()); rerender?.();
+            if (sourceError) toast('warning', 'TT 密钥库暂时读取失败，其他来源已正常扫描');
+            const fresh = found.filter(f => !f.have).length;
+            toast(fresh ? 'success' : 'info', found.length ? `找到 ${found.length} 条，其中 ${fresh} 条钥匙本里还没有` : '没找到可读取的 API；TT 密钥库需允许读取密钥');
+        } catch { toast('warning', '部分 API 来源读取失败，请稍后重新扫描'); }
+    }
+    async function collect() {
+        if (disposed || store().autoCollect === false) return;
+        if (collecting) { collectAgain = true; return; }
+        collecting = true;
+        try {
+            const list = await candidates();
+            if (disposed || store().autoCollect === false) return;
+            let added = 0;
+            for (const f of list) {
+                if (!f.url || store().ignoredSources?.includes(sourceOf(f)) || store().keys.some(k => sameKey(k, f))) continue;
+                store().keys.push({ ...newKey({ name: f.name, url: f.url, key: f.key, model: f.model, note: '自动收录来自 ' + f.path }), source: sourceOf(f) }); added++;
+            }
+            if (added) {
+                save();
+                if (found) present(list);
+                if (!editing) rerender?.();
+            }
+        } catch { /* 手动扫描时显示错误；自动发现不反复弹窗。 */ }
+        finally { collecting = false; if (collectAgain) { collectAgain = false; scheduleCollect(); } }
+    }
+    function scheduleCollect() {
+        if (disposed || store().autoCollect === false) return;
+        doc.defaultView.clearTimeout(collectTimer);
+        collectTimer = doc.defaultView.setTimeout(() => { collectTimer = null; return collect(); }, 600);
+    }
+    function initAutoCollect() {
+        if (initialized) return; initialized = true;
+        for (const event of ['APP_READY', 'SETTINGS_UPDATED', 'SECRET_WRITTEN', 'SECRET_ROTATED', 'CONNECTION_PROFILE_CREATED', 'CONNECTION_PROFILE_UPDATED', 'CONNECTION_PROFILE_LOADED']) host.on?.(event, scheduleCollect);
+        // 插件表单没有统一保存事件，change 后等待其保存；不读取尚未保存的密钥输入值。
+        doc.addEventListener('change', onApiChange, true);
+        scheduleCollect();
+    }
+    function onApiChange(e) { if (!isOurs(e.target) && kindOf(e.target)) scheduleCollect(); }
     function scanBox() {
         const rows = found.map(f => {
             const cb = h('input', { type: 'checkbox', checked: f.pick, disabled: f.have });
@@ -73,7 +123,10 @@ export function createKeyKeeper(host) {
             rows.length ? rows : h('p', { class: 'tvrm-empty' }, '酒馆反代列表和插件设置里都没找到'),
             rows.length ? h('div', { class: 'tvrm-set-actions' }, btn('收进钥匙本', () => {
                 const take = found.filter(f => f.pick && !f.have);
-                for (const f of take) store().keys.push(newKey({ name: f.name, url: f.url, key: f.key, note: '扫描来自 ' + f.path }));
+                for (const f of take) {
+                    if (!store().keys.some(k => sameKey(k, f))) store().keys.push({ ...newKey({ name: f.name, url: f.url, key: f.key, note: '扫描来自 ' + f.path }), source: sourceOf(f) });
+                    store().ignoredSources = (store().ignoredSources || []).filter(x => x !== sourceOf(f));
+                }
                 found = null; save(); rerender?.();
                 toast('success', take.length ? `收进来 ${take.length} 条` : '没有勾选');
             })) : null);
@@ -128,12 +181,12 @@ export function createKeyKeeper(host) {
             h('div', { class: 'tvrm-set-actions' },
                 btn(busy.has(k.id) ? '测试中…' : '测连接', () => !busy.has(k.id) && test(k)),
                 btn('编辑', () => { editing = { ...k, ref: k }; rerender?.(); }),
-                btn('删除', async () => { if (await host.confirm?.(`删除「${k.name}」？`)) { store().keys = store().keys.filter(x => x !== k); save(); rerender?.(); } }, 'tvrm-delete'))));
+                btn('删除', async () => { if (await host.confirm?.(`删除「${k.name}」？`)) { if (k.source) store().ignoredSources = [...new Set([...(store().ignoredSources || []), k.source])]; store().keys = store().keys.filter(x => x !== k); save(); rerender?.(); } }, 'tvrm-delete'))));
         return d;
     }
 
     function render(container) {
-        rerender = () => render(container);
+        rerender = () => { if (container.isConnected) render(container); };
         const s = store();
         container.replaceChildren();
         const search = h('input', { class: 'text_pole', placeholder: '搜名字、地址、模型、标签', value: query });
@@ -141,6 +194,10 @@ export function createKeyKeeper(host) {
         container.append(h('div', { class: 'tvrm-actions' }, search,
             btn('新建', () => { editing = { ...newKey(), ref: null }; rerender?.(); }),
             btn('扫描', scan)));
+        const auto = h('input', { type: 'checkbox', checked: s.autoCollect !== false });
+        auto.addEventListener('change', () => { s.autoCollect = auto.checked; save(); if (auto.checked) scheduleCollect(); });
+        container.append(h('label', { class: 'checkbox_label' }, auto, '自动收录新 API'));
+        container.append(h('p', { class: 'tvrm-note' }, '收录已保存的地址和密钥；TT 密钥库需允许读取密钥。不会自动测试连接或修改已有条目。'));
         if (found) container.append(scanBox());
         if (editing && !editing.ref) container.append(editor(editing));
         container.append(listEl());
@@ -262,6 +319,7 @@ export function createKeyKeeper(host) {
         }
     }
     function initFill() {
+        initAutoCollect();
         doc.addEventListener('focusin', e => {
             const el = e.composedPath?.()[0] || e.target;
             const kind = kindOf(el);
@@ -280,5 +338,5 @@ export function createKeyKeeper(host) {
         }, true);
     }
 
-    return { render, initFill, store, kindOf, partnerOf, fill: k => fill(k), setTarget: (el, kind) => { target = { el, kind }; } };
+    return { render, initFill, initAutoCollect, collect, scheduleCollect, destroy() { disposed = true; doc.defaultView.clearTimeout(collectTimer); doc.removeEventListener('change', onApiChange, true); }, store, kindOf, partnerOf, fill: k => fill(k), setTarget: (el, kind) => { target = { el, kind }; } };
 }

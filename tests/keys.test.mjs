@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
 import { classifyField, scanSettings, normalizeUrl, newKey, maskKey, searchKeys, parseModels } from '../src/keys.mjs';
+import { collectNativeApis } from '../src/nativeApis.mjs';
 import { createKeyKeeper } from '../src/keysUI.mjs';
 
 test('认框：密钥框、地址框，别的不认', () => {
@@ -32,7 +33,7 @@ test('地址整理、遮住密钥、搜索、模型列表', () => {
     assert.equal(newKey({ url: 'https://c.com/v1' }).name, 'c.com');
 });
 
-function setup() {
+function setup(options = {}) {
     const dom = new JSDOM(`<body>
         <div class="form"><label for="u">接口地址</label><input id="u" type="text"><label>API Key<input id="k" type="password"></label></div>
         <div class="other"><input id="lonely" type="password" placeholder="secret"></div>
@@ -44,7 +45,7 @@ function setup() {
     const toasts = []; const proxies = [{ name: '主力', url: 'https://relay.com/v1', password: 'sk-relay-123' }, { name: 'None', url: '', password: '' }];
     const keeper = createKeyKeeper({ document, getContext: () => ctx, toast: (k, m) => toasts.push([k, m]), confirm: async () => true,
         proxy: { list: () => proxies },
-        probe: async (url, key) => { if (key !== 'sk-good') throw new Error('401'); return ['m2', 'm1']; } });
+        probe: async (url, key) => { if (key !== 'sk-good') throw new Error('401'); return ['m2', 'm1']; }, ...options });
     return { dom, document, ctx, keeper, toasts, proxies };
 }
 
@@ -71,7 +72,7 @@ test('面板：新建、测连接拿到模型、挑模型；没有「搬过来�
     inputs[0].value = '主力'; inputs[1].value = 'https://new.com/v1'; inputs[2].value = 'sk-good';
     [...ed.querySelectorAll('button')].find(b => b.textContent === '保存').click();
     const k = x.keeper.store().keys[0];
-    assert.equal(k.name, '主力'); assert.equal(x.proxies.length, 2); assert.equal(box.querySelector('input[type=checkbox]'), null);
+    assert.equal(k.name, '主力'); assert.equal(x.proxies.length, 2); assert.equal(box.querySelector('.tvrm-key input[type=checkbox]'), null);
     const card = box.querySelector('.tvrm-key'); card.open = true;
     [...card.querySelectorAll('button')].find(b => b.textContent === '测连接').click();
     await new Promise(r => setTimeout(r, 5));
@@ -118,12 +119,13 @@ test('扫描：找出各插件存的地址+密钥（含列表里的、嵌套的�
     assert.equal(r.length, 3);
 });
 
-test('扫描按钮：列出酒馆反代列表和插件里的，已有的不勾，勾了才收', () => {
+test('扫描按钮：列出酒馆反代列表和插件里的，已有的不勾，勾了才收', async () => {
     const x = setup(); const d = x.document; const box = d.getElementById('box');
     x.ctx.extensionSettings.imageGen = { apiUrl: 'https://img.com/v1', apiKey: 'sk-img-123456' };
     x.keeper.store().keys.push(newKey({ name: '已有', url: 'https://relay.com/v1', key: 'sk-relay-123' }));
     x.keeper.render(box);
     [...box.querySelectorAll('button')].find(b => b.textContent === '扫描').click();
+    await new Promise(r => setTimeout(r, 0));
     const rows = [...box.querySelectorAll('.tvrm-scan-row')];
     assert.equal(rows.length, 2);
     const relay = rows.find(r => /酒馆反代列表/.test(r.textContent)); assert.ok(relay.classList.contains('is-have')); assert.equal(relay.querySelector('input').checked, false);
@@ -147,4 +149,50 @@ test('小钥匙：页面滚动后还在、跟着框走；点到别处才收起',
     assert.ok(d.querySelector('.tvrm-key-pill'), '按小钥匙不收起');
     d.getElementById('box').dispatchEvent(new win.Event('pointerdown', { bubbles: true }));
     assert.equal(d.querySelector('.tvrm-key-pill'), null, '点到别处收起');
+});
+
+
+test('原生来源：当前自定义密钥与档案编号分别配对，不把活动密钥套给无引用档案', async () => {
+    const calls = [];
+    const found = await collectNativeApis({ settings: { chat_completion_source: 'custom', custom_url: 'https://current.test/v1', custom_model: 'm' },
+        profiles: [{ id: 'p1', name: '档案', 'api-url': 'https://saved.test/v1', secretRef: { key: 'api_key_custom', id: 'saved' } }, { name: '不明确', api: 'custom', 'api-url': 'https://unknown.test' }],
+        readSecret: async (key, id) => { calls.push(id); return id ? 'saved-secret' : 'active-secret'; } });
+    assert.equal(found.length, 2); assert.deepEqual(calls, [undefined, 'saved']);
+    assert.equal(found[0].url, 'https://current.test/v1'); assert.equal(found[0].key, 'active-secret');
+    assert.equal(found[1].key, 'saved-secret');
+    assert.deepEqual(await collectNativeApis({settings:{chat_completion_source:'custom',custom_url:'https://x.test'},readSecret:async()=>null}), []);
+});
+
+test('自动收录：保存事件合并触发，新增立即加入，重复与规范化地址不重复，手动删除不复活', async () => {
+    const events = new Map(); const tasks = new Map(); let timerId = 0;
+    const x = setup({ on: (name, fn) => events.set(name, fn) });
+    x.dom.window.setTimeout = fn => { tasks.set(++timerId, fn); return timerId; };
+    x.dom.window.clearTimeout = id => tasks.delete(id);
+    x.keeper.initAutoCollect();
+    x.ctx.extensionSettings.plugin = { apiUrl: 'https://new.test/v1', apiKey: 'abcdefghijklmno' };
+    events.get('SETTINGS_UPDATED')(); events.get('SETTINGS_UPDATED')();
+    assert.equal(tasks.size, 1);
+    await [...tasks.values()][0](); tasks.clear();
+    assert.ok(x.keeper.store().keys.some(k => k.url === 'https://new.test/v1'));
+    const count=x.keeper.store().keys.length;
+    x.ctx.extensionSettings.copy={ endpoint:'https://NEW.test/v1/', token:'abcdefghijklmno' };
+    await x.keeper.collect(); assert.equal(x.keeper.store().keys.length,count);
+    const box=x.document.getElementById('box'); x.keeper.render(box);
+    const card=[...box.querySelectorAll('.tvrm-key')].find(c=>c.textContent.includes('new.test'));
+    [...card.querySelectorAll('button')].find(b=>b.textContent==='删除').click();
+    await new Promise(resolve=>setImmediate(resolve));
+    await x.keeper.collect(); assert.equal(x.keeper.store().keys.length,count-1);
+    x.keeper.store().autoCollect=false;
+    x.ctx.extensionSettings.other={url:'https://off.test',key:'anothersecret'};
+    await x.keeper.collect(); assert.equal(x.keeper.store().keys.length,count-1);
+    x.keeper.destroy(); x.dom.window.close();
+});
+
+test('TT 原生 API 与插件扫描共用收录，读取失败不影响其他来源', async () => {
+    let fail=false;
+    const x=setup({ nativeApis:async()=>{if(fail)throw new Error('unavailable');return [{name:'自定义',path:'TT API',url:'https://native.test/v1',key:'secret-value'}];} });
+    await x.keeper.collect(); assert.ok(x.keeper.store().keys.some(k=>k.url==='https://native.test/v1'));
+    fail=true; x.ctx.extensionSettings.plugin={url:'https://plugin.test',apiKey:'purelettersecret'};
+    await x.keeper.collect(); assert.ok(x.keeper.store().keys.some(k=>k.url==='https://plugin.test'));
+    x.keeper.destroy(); x.dom.window.close();
 });
