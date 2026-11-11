@@ -34,13 +34,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: false, smooth: false, pageLite: false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: false, smooth: false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth', 'pageLite']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -97,11 +97,6 @@ const CSS = `
 .tvrm-tidy-out{animation:tvrm-tidy-out .16s ease-in forwards}
 @media (prefers-reduced-motion:reduce){.tvrm-tidy-in,.tvrm-tidy-out,.tvrm-tidy-left{animation:none}}
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
-/* 页面减负只改酒馆面板的绘制效果，不加触摸监听、图层隔离或滚动接管。 */
-.tvrm-tidy-page-lite :is(.drawer-content,#right-nav-panel,#left-nav-panel,#character_popup,#world_popup,dialog.popup),
-.tvrm-tidy-page-lite :is(.drawer-content,#right-nav-panel,#left-nav-panel,#character_popup,#world_popup,dialog.popup) :where(*){
- backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;text-shadow:none!important
-}
 /* 滑动空白修复（试验）：让屏外消息继续参与渲染，关闭后恢复主题行为。 */
 .tvrm-tidy-smooth #chat .mes{content-visibility:visible!important;contain-intrinsic-size:none!important}
 @media (max-width:600px),(pointer:coarse) and (max-width:1200px){
@@ -405,7 +400,6 @@ export function createTidy(host) {
         }
         if (S().regexFit) addClass(doc.body, 'tvrm-tidy-regex');
         if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
-        if (S().pageLite) addClass(doc.body, 'tvrm-tidy-page-lite');
         watch();
     }
 
@@ -608,10 +602,6 @@ export function createTidy(host) {
 
         kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
             check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));
-
-        kids.push(part('pageLite', '页面滑动减负（试验）', st.pageLite ? '开着 · 面板模糊和阴影已关闭' : '关着 · 角色、人设及其他面板共用',
-            check('启用', st.pageLite, v => change(x => { x.pageLite = v; }), '减少面板的背景模糊、盒子阴影和文字阴影，外观会简化；关闭恢复主题效果。'),
-            h('p', { class: 'tvrm-note' }, '针对滑动后页面迟迟才动的情况，独立于界面整理和聊天空白修复。需要在 TT 手机上开关对比；不能消除其他插件阻塞或系统手势等待。')));
 
         kids.push(part('scrollProbe', '滑动延迟检测', scrollProbe.running ? '正在记录 · 60 秒后自动停止' : '记录角色 / 人设持续滑动',
             h('p', { class: 'tvrm-note' }, '点开始后去角色和人设页持续滑动，再回来停止并复制结果。只记录事件计数和时间，不读取内容。'),
