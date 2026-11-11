@@ -71,10 +71,15 @@ export function extRank(item, seen) {
 const CSS = `
 .tvrm-tidy-gone{display:none!important}
 .tvrm-tidy-slim{flex:0 0 0!important;width:0!important;min-width:0!important;margin-inline:0!important;padding-inline:0!important}
-.tvrm-tidy-more{border-top:1px solid var(--SmartThemeBorderColor,#7775);margin-top:4px;padding-top:2px}
+.tvrm-tidy-more{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:0!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;opacity:1!important;cursor:default!important;border-top:1px solid var(--SmartThemeBorderColor,#7775);margin-top:4px;padding:2px 0 0!important}
 .tvrm-tidy-dots{display:flex!important;justify-content:center;align-items:center;width:100%;box-sizing:border-box;cursor:pointer;padding:6px 0!important;margin:0!important;opacity:.7;border-radius:6px;color:inherit}
 .tvrm-tidy-dots.is-open{opacity:1;background:color-mix(in srgb,var(--SmartThemeBodyColor,#888) 8%,transparent)}
-.tvrm-tidy-more-list{display:flex;flex-direction:column;font-size:.88em}
+.tvrm-tidy-more-list{display:flex!important;flex-direction:column!important;align-items:stretch!important;flex:0 0 auto!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;font-size:.88em}
+.tvrm-tidy-more-list>*{display:flex!important;flex-direction:row!important;align-items:center!important;gap:10px!important;flex:0 0 auto!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;padding:5px!important;color:inherit;text-decoration:none;cursor:pointer}
+#extensionsMenu .tvrm-tidy-more-list>*{opacity:.5}
+#extensionsMenu .tvrm-tidy-more-list>*:hover{opacity:1}
+.tvrm-tidy-more-list>*>:is(i,svg,.extensionsMenuExtensionButton){flex:0 0 20px!important;width:20px!important;min-width:20px!important;align-self:center}
+.tvrm-tidy-more-list>*>span:not([class*="fa-"]){min-width:0;overflow-wrap:anywhere}
 .tvrm-tidy-more-list[hidden]{display:none!important}
 .tvrm-tidy-topmore{display:flex;align-items:center;cursor:pointer}
 .tvrm-tidy-topmore .drawer-icon{transition:transform .2s}
