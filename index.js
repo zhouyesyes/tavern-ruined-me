@@ -104,6 +104,7 @@ const keyKeeper = createKeyKeeper({
         settings: oai.oai_settings,
         profiles: getContext().extensionSettings.connectionManager?.profiles || [],
         customSecretKey: secrets.SECRET_KEYS?.CUSTOM || 'api_key_custom',
+        canReadSecrets: () => secrets.canViewSecrets?.(),
         readSecret: (key, id) => secrets.findSecret?.(key, id),
     }),
     proxy: { list: () => (oai.proxies || []).map(p => ({ name: p.name, url: p.url, password: p.password })) }, // 扫描时读一下酒馆反代列表

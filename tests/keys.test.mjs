@@ -155,7 +155,7 @@ test('小钥匙：页面滚动后还在、跟着框走；点到别处才收起',
 test('原生来源：当前自定义密钥与档案编号分别配对，不把活动密钥套给无引用档案', async () => {
     const calls = [];
     const found = await collectNativeApis({ settings: { chat_completion_source: 'custom', custom_url: 'https://current.test/v1', custom_model: 'm' },
-        profiles: [{ id: 'p1', name: '档案', 'api-url': 'https://saved.test/v1', secretRef: { key: 'api_key_custom', id: 'saved' } }, { name: '不明确', api: 'custom', 'api-url': 'https://unknown.test' }],
+        canReadSecrets: async () => true, profiles: [{ id: 'p1', name: '档案', 'api-url': 'https://saved.test/v1', secretRef: { key: 'api_key_custom', id: 'saved' } }, { name: '不明确', api: 'custom', 'api-url': 'https://unknown.test' }],
         readSecret: async (key, id) => { calls.push(id); return id ? 'saved-secret' : 'active-secret'; } });
     assert.equal(found.length, 2); assert.deepEqual(calls, [undefined, 'saved']);
     assert.equal(found[0].url, 'https://current.test/v1'); assert.equal(found[0].key, 'active-secret');
@@ -195,4 +195,15 @@ test('TT 原生 API 与插件扫描共用收录，读取失败不影响其他来
     fail=true; x.ctx.extensionSettings.plugin={url:'https://plugin.test',apiKey:'purelettersecret'};
     await x.keeper.collect(); assert.ok(x.keeper.store().keys.some(k=>k.url==='https://plugin.test'));
     x.keeper.destroy(); x.dom.window.close();
+});
+
+
+test('TT 未允许密钥读取或权限未知时不调用 findSecret，随后开启权限可重新收录', async () => {
+    const settings = { chat_completion_source:'custom', custom_url:'https://current.test/v1' };
+    let allowed=false, reads=0;
+    const host={settings,canReadSecrets:async()=>allowed,readSecret:async()=>{reads++;return 'dummy-secret';}};
+    for (const state of [false,null,undefined]) { allowed=state; assert.deepEqual(await collectNativeApis(host),[]); }
+    assert.equal(reads,0);
+    allowed=true; assert.equal((await collectNativeApis(host)).length,1); assert.equal(reads,1);
+    delete host.canReadSecrets; assert.deepEqual(await collectNativeApis(host),[]); assert.equal(reads,1);
 });

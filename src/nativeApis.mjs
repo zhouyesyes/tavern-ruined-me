@@ -1,5 +1,8 @@
 // 只读取可明确配对的当前自定义来源和连接档案；不猜测历史密钥对应的地址。
-export async function collectNativeApis({ settings, profiles = [], readSecret, customSecretKey = 'api_key_custom' }) {
+export async function collectNativeApis({ settings, profiles = [], readSecret, canReadSecrets, customSecretKey = 'api_key_custom' }) {
+    // findSecret 的权限拒绝会触发宿主后端红框，先通过只读接口确认权限。
+    if (typeof canReadSecrets !== 'function') return [];
+    try { if (await canReadSecrets() !== true) return []; } catch { return []; }
     const result = [], reads = new Map();
     const read = (key, id) => {
         const token = key + ':' + (id || 'active');
