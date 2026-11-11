@@ -273,7 +273,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 5);
+    assert.equal(groups.length, 4);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
@@ -284,11 +284,11 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
 });
 
 test('总开关和恢复原界面只管前五项，独立功能不受砚台影响', () => {
-    const { doc, tidy } = setup({ on: false, smooth: true, regexFit: true }, '<style id="yt-interface-active-style"></style>');
+    const { doc, tidy } = setup({ on: false, smooth: true }, '<style id="yt-interface-active-style"></style>');
     tidy.init();
-    for (const cls of ['tvrm-tidy-smooth', 'tvrm-tidy-regex']) assert.ok(doc.body.classList.contains(cls));
+    for (const cls of ['tvrm-tidy-smooth']) assert.ok(doc.body.classList.contains(cls));
     tidy.restore();
-    for (const cls of ['tvrm-tidy-smooth', 'tvrm-tidy-regex']) assert.ok(doc.body.classList.contains(cls));
+    for (const cls of ['tvrm-tidy-smooth']) assert.ok(doc.body.classList.contains(cls));
     tidy.destroy();
     assert.ok(!doc.body.classList.contains('tvrm-tidy-smooth'));
 });

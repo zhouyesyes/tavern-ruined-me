@@ -34,13 +34,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, regexFit: false, smooth: false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'regexFit', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -99,12 +99,7 @@ const CSS = `
 .tvrm-tidy-col>.tvrm-tidy-row{flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-inline:0!important}
 /* 滑动空白修复（试验）：让屏外消息继续参与渲染，关闭后恢复主题行为。 */
 .tvrm-tidy-smooth #chat .mes{content-visibility:visible!important;contain-intrinsic-size:none!important}
-@media (max-width:600px),(pointer:coarse) and (max-width:1200px){
- .tvrm-tidy-regex #regex_container{max-width:100%;overflow-x:hidden;box-sizing:border-box}
- .tvrm-tidy-regex #regex_container :where(input,select,textarea){max-width:100%;min-width:0;box-sizing:border-box}
- .tvrm-tidy-regex #regex_container :where(.regex-script-label){flex-wrap:nowrap;min-width:0}
- .tvrm-tidy-regex #regex_container :where(.regex-script-label>.regex_script_name){flex:1 1 0%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-}`;
+`;
 
 export function createTidy(host) {
     const doc = host.document;
@@ -398,7 +393,6 @@ export function createTidy(host) {
                 try { f(); } catch (e) { console.warn('[酒馆你害我不浅] 界面整理出错', e); }
             }
         }
-        if (S().regexFit) addClass(doc.body, 'tvrm-tidy-regex');
         if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
         watch();
     }
@@ -599,9 +593,6 @@ export function createTidy(host) {
         kids.push(part('smooth', '滑动空白修复（试验）', st.smooth ? '开着' : '关着',
             check('启用', st.smooth, v => change(x => { x.smooth = v; }), '让屏幕外的消息也参与渲染，尝试减少滑动时先空白再出现。保留原来的开关状态。'),
             h('p', { class: 'tvrm-note' }, '长聊天可能增加内存和首次绘制开销；如果没有改善或变卡，可以关闭。')));
-
-        kids.push(part('regex', '手机上的正则', '正则列表不超出屏幕宽度',
-            check('启用', st.regexFit, v => change(x => { x.regexFit = v; }), '正则名字太长时显示省略号，开关和按钮留在同一行')));
 
         kids.push(part('scrollProbe', '滑动延迟检测', scrollProbe.running ? '正在记录 · 60 秒后自动停止' : '记录角色 / 人设持续滑动',
             h('p', { class: 'tvrm-note' }, '点开始后去角色和人设页持续滑动，再回来停止并复制结果。只记录事件计数和时间，不读取内容。'),
