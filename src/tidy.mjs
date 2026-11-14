@@ -1,3 +1,4 @@
+import { createEdgeColor } from './edge-color.mjs';
 import { createScrollProbe } from './scrollProbe.mjs';
 // 界面格：把酒馆里不常用的按钮和设置收起来（照「砚台 · 界面整理」的功能自己重写，没有复制它的代码）。
 // 只加 / 去掉咱们自己的 class、自己插的折叠头，和扩展页上记得住原值的几条行内样式；关掉或「恢复原界面」就全部还原。
@@ -44,6 +45,7 @@ export function normalizeTidy(v) {
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
+    out.edgeColor = ['dark', 'soft'].includes(d.edgeColor) ? d.edgeColor : 'off';
     return out;
 }
 // 认东西用的名字：有 id 用 id，没有就用「在哪 + 显示的字」
@@ -123,6 +125,8 @@ export function createTidy(host) {
     let rerender = null; let dead = false; let queued = false; let frame = null;
     let style = null;
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
+    let edgeMessage = '';
+    const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } });
 
     // —— 记账：加过的 class、改过的行内样式、挪过的菜单项、插进去的东西，还原时一样样退回去 ——
     const classes = new Map(); // 元素 → Set(class)
@@ -391,6 +395,7 @@ export function createTidy(host) {
     }
     function apply() {
         if (dead) return;
+        edgeColor.apply(S().edgeColor);
         pause();
         undoAll();
         if (S().on && !yantaiOn()) {
@@ -605,6 +610,13 @@ export function createTidy(host) {
                 btn('复制检测结果', async () => { scrollProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(scrollProbe.report()); toast('success', '检测结果已复制'); } catch { toast('warning', '请在下方框内长按复制检测结果'); } })),
             h('textarea', { class: 'text_pole', readonly: true, rows: 5 }, scrollProbe.report())));
 
+        kids.push(part('edgeColor', '边缘颜色', { off: '关闭 · 使用原壁纸', dark: '统一深色', soft: '柔和渐变' }[st.edgeColor],
+            h('div', { class: 'tvrm-actions' }, [['off', '关闭'], ['dark', '统一深色'], ['soft', '柔和渐变']].map(([value, label]) =>
+                h('button', { type: 'button', class: 'menu_button', 'aria-pressed': st.edgeColor === value ? 'true' : 'false', onclick: () => change(x => { x.edgeColor = value; }) }, label))),
+            h('p', { class: 'tvrm-note' }, '统一深色让外层接近黑色；柔和渐变以灰粉色连接上下边缘。开启时暂时隐藏壁纸，关闭后恢复。独立于界面整理和全屏。'),
+            edgeMessage ? h('p', { class: 'tvrm-tidy-warn' }, edgeMessage) : null,
+            h('div', { class: 'tvrm-actions' }, btn('重新同步外层颜色', () => edgeColor.retry()))));
+
         kids.push(part('fullscreen', '页面全屏', fullscreenElement() || nativeFullscreen ? '已全屏' : '让酒馆占满屏幕',
             h('div', { class: 'tvrm-actions' }, btn(fullscreenElement() || nativeFullscreen ? '退出全屏' : '进入全屏', () => toggleFullscreen())),
             h('p', { class: 'tvrm-note' }, '独立于界面整理。能否隐藏手机顶部状态栏和底部横条，取决于 TT / 浏览器的全屏支持。')));
@@ -613,5 +625,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }

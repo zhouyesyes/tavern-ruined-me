@@ -122,6 +122,11 @@ const keyKeeper = createKeyKeeper({
 
 // 界面格：把不常用的按钮和设置收起来（照砚台 · 界面整理的功能自己写的）
 const tidy = createTidy({
+    publishBackdrop: async () => {
+        if (!window.__TAURITAVERN__) throw new Error('当前不是 TT 宿主');
+        const { applyWindowBackdrop } = await import('../../../window-backdrop.js');
+        applyWindowBackdrop();
+    },
     document,
     getContext,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),

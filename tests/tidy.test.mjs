@@ -273,7 +273,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 4);
+    assert.equal(groups.length, 5);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
@@ -399,4 +399,23 @@ test('后加载的扩展始终在收起栏前面，关闭整理后不留下末�
     tidy.restore();
     assert.equal(doc.querySelector('.tvrm-tidy-extbox'), null);
     assert.equal(late.parentElement, root); tidy.destroy();
+});
+
+test('边缘颜色独立保存、切换，关闭恢复原壁纸节点', async () => {
+    const { doc, tidy, c, dom } = setup({ on: false }, '<div id="bg1" style="background-image:url(original.png)"></div>');
+    tidy.init();
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    const click = name => [...panel.querySelectorAll('button')].find(b => b.textContent === name).click();
+    click('统一深色');
+    assert.equal(c.extensionSettings[TIDY].edgeColor, 'dark');
+    assert.equal(c.extensionSettings[TIDY].on, false);
+    assert.ok(doc.body.classList.contains('tvrm-edge-dark'));
+    click('柔和渐变');
+    assert.equal(c.extensionSettings[TIDY].edgeColor, 'soft');
+    assert.ok(doc.getElementById('tvrm-edge-fade'));
+    click('关闭');
+    assert.equal(c.extensionSettings[TIDY].edgeColor, 'off');
+    assert.equal(doc.getElementById('tvrm-edge-fade'), null);
+    assert.match(doc.getElementById('bg1').style.backgroundImage, /original.png/);
+    tidy.destroy(); dom.window.close();
 });
