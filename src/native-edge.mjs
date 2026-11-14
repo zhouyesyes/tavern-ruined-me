@@ -56,7 +56,7 @@ export function createNativeEdge(doc, headers = () => ({})) {
             const match = /^url\(["']?(.*?)["']?\)$/.exec(style.backgroundImage);
             if (match) { const url = new URL(match[1], win.location.href); if (url.origin === win.location.origin) resourcePath = url.pathname; }
         }
-        await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: baseColor(), wallpaper: { resourcePath, size: style?.backgroundSize || 'cover', position: style?.backgroundPosition || 'center' } } });
+        await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: baseColor(), wallpaper: { resourcePath, size: style?.backgroundSize || 'cover', position: `${style?.backgroundPositionX || '50%'} ${style?.backgroundPositionY || '50%'}` } } });
         await cleanup();
     }
     async function apply(mode, isCurrent = () => true, targetColor = null) {
@@ -100,7 +100,7 @@ export function createNativeEdge(doc, headers = () => ({})) {
             if (!isCurrent()) { await cleanup(); return; }
             const latest = await invoke('get_window_snapshot');
             if (!isCurrent() || latest.revision !== snapshot.revision) { await cleanup(); return; }
-            await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: base, wallpaper: { resourcePath: new URL('/' + path.replace(/^\/+/, ''), win.location.href).pathname, size: '100% 100%', position: 'center' } } });
+            await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: base, wallpaper: { resourcePath: new URL('/' + path.replace(/^\/+/, ''), win.location.href).pathname, size: '100% 100%', position: '0px 0px' } } });
             await cleanup(path);
         } catch (error) {
             try { await restore(); } catch { /* Preserve the original failure for the settings panel. */ }
