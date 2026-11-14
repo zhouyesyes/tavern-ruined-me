@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
     const pathname = new URL(route.request().url()).pathname;
     if (pathname.endsWith('.mjs')) return route.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(path.join(__dirname, '..', 'src', path.basename(pathname)), 'utf8') });
     if (pathname.endsWith('.svg')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#947b83"/><circle cx="50" cy="50" r="35" fill="#d9b8c8"/></svg>' });
-    return route.fulfill({ contentType: 'text/html', body: `<style>body{margin:0;background:${right}}#bg1{position:fixed;inset:0;z-index:-1;background-size:cover}header,footer{height:44px;display:flex;background:${right}}aside{width:${width > 700 ? 28 : 0}%;background:${left}}main{height:688px;background:linear-gradient(transparent,#0003)}button{margin:8px 20px}footer{position:fixed;bottom:0;width:100%}</style><body><div id="bg1" style="background-image:url('/backgrounds/original.svg');background-position:right bottom"></div><header><aside></aside><button>设置</button></header><main>Original wallpaper remains visible</main><footer><aside></aside><button id="send">发送</button></footer></body>` });
+    return route.fulfill({ contentType: 'text/html', body: `<style>body{margin:0;background:${right}}#bg1{position:fixed;inset:0;z-index:-1;background-size:cover}header,footer{height:44px;display:flex;background:${right}}aside{width:${width > 700 ? 28 : 0}%;background:${left}}main{height:688px;background:linear-gradient(transparent,#0003)}button{margin:8px 20px}footer{position:fixed;bottom:0;width:100%}</style><body><div id="bg1" style="background-image:url('/backgrounds/original.svg');background-position:right bottom"></div><header id="top-settings-holder"><aside></aside><button>设置</button></header><main>Original wallpaper remains visible</main><footer><aside></aside><button id="send">发送</button></footer></body>` });
    });
    await page.goto('http://edge.test/');
    await page.exposeFunction('capturePage', async () => (await page.screenshot()).toString('base64'));
@@ -50,7 +50,7 @@ const assert = require('node:assert/strict');
      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
      const ctx = canvas.getContext('2d'); ctx.drawImage(image,0,0);
      const pixel = (x,y) => [...ctx.getImageData(x,y,1,1).data];
-     results.push({ mode, target, outer:pixel(5,0), width:image.width, height:image.height, left:pixel(5,31), right:pixel(innerWidth-5,31), middle:pixel(10,100), files:files.size });
+     results.push({ mode, target, outer:pixel(5,0), width:image.width, height:image.height, left:pixel(5,31), right:pixel(innerWidth-5,31), bottom:pixel(5,808), middle:pixel(10,100), files:files.size });
     }
     await edge.apply('off');
     return { results, remaining:files.size, restore:requests.at(-1).wallpaper.resourcePath, restorePosition:requests.at(-1).wallpaper.position, overlay:!!document.getElementById('tvrm-edge-fade') };
@@ -60,8 +60,9 @@ const assert = require('node:assert/strict');
    for (const r of result.results) {
     assert.equal(r.width,width); assert.equal(r.height,832);
     assert.deepEqual(r.right,rgb(right));
+    assert.deepEqual(r.bottom,rgb(right));
     if (r.target) assert.deepEqual(r.outer, [171,205,239,255]);
-    assert.deepEqual(r.left,rgb(width>700 ? left : right));
+    assert.deepEqual(r.left,rgb(right));
     assert.deepEqual(r.middle,[0,0,0,0]); assert.equal(r.files,1);
    }
    assert.equal(result.restorePosition,'100% 100%');

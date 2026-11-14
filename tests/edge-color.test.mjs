@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(process.env.JSDOM_DIR || '/tmp/jsd/')('jsdom');
 import { createEdgeColor } from '../src/edge-color.mjs';
-import { edgePixels } from '../src/native-edge.mjs';
+import { edgePixels, toolbarColor } from '../src/native-edge.mjs';
 import { normalizeTidy } from '../src/tidy.mjs';
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -52,21 +52,23 @@ test('接口失败不改网页并明确提示，重试成功清除错误', async
 });
 
 const snapshot = { width: 4, height: 6, insets: { top: 2, bottom: 2, left: 0, right: 0 } };
-const rows = { top: Uint8ClampedArray.from([0,0,0,255,0,0,0,255,240,230,220,255,240,230,220,255]), bottom: Uint8ClampedArray.from([10,20,30,255,10,20,30,255,255,250,245,255,255,250,245,255]) };
-test('平板按每列保留左右分区、日间浅色和不同的上下颜色，不画进网页', () => {
-    const data = edgePixels(snapshot, rows, 'dark', [100,100,100]);
+const color = [0,0,0];
+test('顶部图标栏只取一个背景色，外层所有列和上下同色，不画进网页', () => {
+    const data = edgePixels(snapshot, color, 'dark', [100,100,100]);
     const pixel = (x, y) => [...data.slice((y * 4 + x) * 4, (y * 4 + x + 1) * 4)];
     assert.deepEqual(pixel(0, 0), [0,0,0,255]);
-    assert.deepEqual(pixel(3, 0), [240,230,220,255]);
-    assert.deepEqual(pixel(3, 5), [255,250,245,255]);
+    assert.deepEqual(pixel(3, 0), [0,0,0,255]);
+    assert.deepEqual(pixel(3, 5), [0,0,0,255]);
     assert.deepEqual(pixel(0, 2), [0,0,0,0]);
+    const light = edgePixels(snapshot, [240,230,220], 'dark', [255,255,255]);
+    assert.deepEqual([...light.slice(0,4)], [240,230,220,255]);
 });
 test('渐变只在原生区域变化，与网页相接的第一行保持精确颜色', () => {
-    const data = edgePixels(snapshot, rows, 'soft', [100,100,100]);
+    const data = edgePixels(snapshot, color, 'soft', [100,100,100]);
     assert.deepEqual([...data.slice(4 * 4, 4 * 4 + 4)], [0,0,0,255]);
     assert.deepEqual([...data.slice(0, 4)], [12,12,12,255]);
     assert.deepEqual([...data.slice(2 * 4 * 4, 4 * 4 * 4)], Array(32).fill(0));
-    assert.deepEqual([...data.slice(4 * 4 * 4, 4 * 4 * 4 + 4)], [10,20,30,255]);
+    assert.deepEqual([...data.slice(4 * 4 * 4, 4 * 4 * 4 + 4)], [0,0,0,255]);
 });
 test('旧设置默认关闭，未知值不能开启效果', () => {
     assert.equal(normalizeTidy({}).edgeColor, 'off');
@@ -76,12 +78,12 @@ test('旧设置默认关闭，未知值不能开启效果', () => {
 
 test('自选颜色只改变渐变外端，接缝保留实际取样；统一模式忽略自选色', () => {
     const target = '#abcdef';
-    const data = edgePixels(snapshot, rows, 'soft', [100,100,100], target);
+    const data = edgePixels(snapshot, color, 'soft', [100,100,100], target);
     assert.deepEqual([...data.slice(0,4)], [171,205,239,255]);
     assert.deepEqual([...data.slice(4*4,4*4+4)], [0,0,0,255]);
-    assert.deepEqual([...data.slice(4*4*4,4*4*4+4)], [10,20,30,255]);
+    assert.deepEqual([...data.slice(4*4*4,4*4*4+4)], [0,0,0,255]);
     assert.deepEqual([...data.slice(5*4*4,5*4*4+4)], [171,205,239,255]);
-    assert.deepEqual(edgePixels(snapshot, rows, 'dark', [100,100,100], target), edgePixels(snapshot, rows, 'dark', [100,100,100]));
+    assert.deepEqual(edgePixels(snapshot, color, 'dark', [100,100,100], target), edgePixels(snapshot, color, 'dark', [100,100,100]));
     assert.equal(normalizeTidy({ edgeGradientColor:'#ABCDEF' }).edgeGradientColor, '#abcdef');
     assert.equal(normalizeTidy({ edgeGradientColor:'bad' }).edgeGradientColor, null);
 });
@@ -94,4 +96,11 @@ test('同一渐变模式换颜色也重新发布，并能恢复自动配色', as
     edge.apply('soft', null); await tick();
     assert.deepEqual(requests, [['soft','#abcdef'], ['soft','#123456'], ['soft',null]]);
     edge.destroy(); await tick(); dom.window.close();
+});
+
+test('图标栏主背景色不受少量图标、文字和图片杂色干扰', () => {
+    const pixels = Uint8ClampedArray.from([8,8,9,255,200,150,170,255,8,8,9,255,255,255,255,255,8,8,9,255]);
+    assert.deepEqual(toolbarColor(pixels), [8,8,9]);
+    assert.deepEqual(toolbarColor(Uint8ClampedArray.from([243,239,230,255,20,20,20,255,243,239,230,255])), [243,239,230]);
+    assert.throws(() => toolbarColor(new Uint8ClampedArray(4)), /未能识别/);
 });
