@@ -36,14 +36,14 @@ const assert = require('node:assert/strict');
     const { createNativeEdge } = await import('/native-edge.mjs');
     const edge = createNativeEdge(document);
     const results = [];
-    for (const mode of ['dark','soft']) {
-     await edge.apply(mode);
+    for (const [mode, target] of [['dark',null],['soft',null],['soft','#abcdef']]) {
+     await edge.apply(mode, () => true, target);
      const request = requests.at(-1), encoded = files.get(request.wallpaper.resourcePath);
      const image = new Image(); image.src = 'data:image/png;base64,' + encoded; await image.decode();
      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
      const ctx = canvas.getContext('2d'); ctx.drawImage(image,0,0);
      const pixel = (x,y) => [...ctx.getImageData(x,y,1,1).data];
-     results.push({ mode, width:image.width, height:image.height, left:pixel(5,31), right:pixel(innerWidth-5,31), middle:pixel(10,100), files:files.size });
+     results.push({ mode, target, outer:pixel(5,0), width:image.width, height:image.height, left:pixel(5,31), right:pixel(innerWidth-5,31), middle:pixel(10,100), files:files.size });
     }
     await edge.apply('off');
     return { results, remaining:files.size, restore:requests.at(-1).wallpaper.resourcePath, overlay:!!document.getElementById('tvrm-edge-fade') };
@@ -53,6 +53,7 @@ const assert = require('node:assert/strict');
    for (const r of result.results) {
     assert.equal(r.width,width); assert.equal(r.height,832);
     assert.deepEqual(r.right,rgb(right));
+    if (r.target) assert.deepEqual(r.outer, [171,205,239,255]);
     assert.deepEqual(r.left,rgb(width>700 ? left : right));
     assert.deepEqual(r.middle,[0,0,0,0]); assert.equal(r.files,1);
    }

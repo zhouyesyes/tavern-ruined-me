@@ -1,11 +1,13 @@
 // Only the native backdrop changes. The page, wallpaper and controls are never styled.
-export function edgePixels(snapshot, rows, mode, base) {
+export function edgePixels(snapshot, rows, mode, base, targetColor = null) {
     const { width: w, height: h, insets: s } = snapshot;
+    const target = typeof targetColor === 'string' && /^#[0-9a-f]{6}$/i.test(targetColor)
+        ? [1, 3, 5].map(i => parseInt(targetColor.slice(i, i + 2), 16)) : null;
     const pixels = new Uint8ClampedArray(w * h * 4);
     const write = (x, y, row, index, distance) => {
         const i = (y * w + x) * 4, r = index * 4;
-        const mix = mode === 'soft' ? .12 * distance : 0;
-        for (let c = 0; c < 3; c++) pixels[i + c] = Math.round(row[r + c] * (1 - mix) + base[c] * mix);
+        const mix = mode === 'soft' ? (target ? 1 : .12) * distance : 0;
+        for (let c = 0; c < 3; c++) pixels[i + c] = Math.round(row[r + c] * (1 - mix) + (target || base)[c] * mix);
         pixels[i + 3] = 255;
     };
     for (let y = 0; y < s.top; y++) for (let x = 0; x < w; x++) write(x, y, rows.top, x, s.top > 1 ? (s.top - 1 - y) / (s.top - 1) : 0);
@@ -57,7 +59,7 @@ export function createNativeEdge(doc, headers = () => ({})) {
         await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: baseColor(), wallpaper: { resourcePath, size: style?.backgroundSize || 'cover', position: style?.backgroundPosition || 'center' } } });
         await cleanup();
     }
-    async function apply(mode, isCurrent = () => true) {
+    async function apply(mode, isCurrent = () => true, targetColor = null) {
         if (mode === 'off') return restore();
         if (!abi().api?.layout?.capture) throw Error('TT 未提供页面边缘取样接口');
         if (doc.querySelector('dialog[open]')) return;
@@ -86,7 +88,7 @@ export function createNativeEdge(doc, headers = () => ({})) {
                 return out;
             };
             const base = baseColor();
-            const pixels = edgePixels(snapshot, { top: row(top, w, s.left, contentW), bottom: row(bottom, w, s.left, contentW), left: row(left, h, s.top, contentH), right: row(right, h, s.top, contentH) }, mode, base);
+            const pixels = edgePixels(snapshot, { top: row(top, w, s.left, contentW), bottom: row(bottom, w, s.left, contentW), left: row(left, h, s.top, contentH), right: row(right, h, s.top, contentH) }, mode, base, targetColor);
             const output = doc.createElement('canvas'); output.width = w; output.height = h;
             const paint = output.getContext('2d'); const data = paint.createImageData(w, h); data.data.set(pixels); paint.putImageData(data, 0, 0);
             // Only generated edge pixels are saved locally. The page screenshot is discarded.

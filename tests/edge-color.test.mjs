@@ -73,3 +73,25 @@ test('旧设置默认关闭，未知值不能开启效果', () => {
     assert.equal(normalizeTidy({ edgeColor: 'bad' }).edgeColor, 'off');
     assert.equal(normalizeTidy({ edgeColor: 'soft' }).edgeColor, 'soft');
 });
+
+test('自选颜色只改变渐变外端，接缝保留实际取样；统一模式忽略自选色', () => {
+    const target = '#abcdef';
+    const data = edgePixels(snapshot, rows, 'soft', [100,100,100], target);
+    assert.deepEqual([...data.slice(0,4)], [171,205,239,255]);
+    assert.deepEqual([...data.slice(4*4,4*4+4)], [0,0,0,255]);
+    assert.deepEqual([...data.slice(4*4*4,4*4*4+4)], [10,20,30,255]);
+    assert.deepEqual([...data.slice(5*4*4,5*4*4+4)], [171,205,239,255]);
+    assert.deepEqual(edgePixels(snapshot, rows, 'dark', [100,100,100], target), edgePixels(snapshot, rows, 'dark', [100,100,100]));
+    assert.equal(normalizeTidy({ edgeGradientColor:'#ABCDEF' }).edgeGradientColor, '#abcdef');
+    assert.equal(normalizeTidy({ edgeGradientColor:'bad' }).edgeGradientColor, null);
+});
+
+test('同一渐变模式换颜色也重新发布，并能恢复自动配色', async () => {
+    const dom = new JSDOM('<body></body>'), requests = [];
+    const edge = createEdgeColor(dom.window.document, async (mode, current, color) => { requests.push([mode,color]); });
+    edge.apply('soft', '#ABCDEF'); await tick();
+    edge.apply('soft', '#123456'); await tick();
+    edge.apply('soft', null); await tick();
+    assert.deepEqual(requests, [['soft','#abcdef'], ['soft','#123456'], ['soft',null]]);
+    edge.destroy(); await tick(); dom.window.close();
+});

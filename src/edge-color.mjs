@@ -1,6 +1,6 @@
 // No CSS overlay, body recoloring or wallpaper hiding: only publish native edge pixels.
 export function createEdgeColor(doc, publish, report = () => {}) {
-    let mode = 'off', observer = null, timer = null, generation = 0;
+    let mode = 'off', targetColor = null, observer = null, timer = null, generation = 0;
     let pending = false, running = false, destroyed = false;
     const win = doc.defaultView;
     const media = win.matchMedia?.('(prefers-color-scheme: dark)');
@@ -11,10 +11,10 @@ export function createEdgeColor(doc, publish, report = () => {}) {
         try {
             while (pending) {
                 pending = false;
-                const current = generation, value = mode;
+                const current = generation, value = mode, color = targetColor;
                 try {
                     if (!publish) throw Error('缺少 TT 原生背景接口');
-                    await publish(value, () => current === generation);
+                    await publish(value, () => current === generation, color);
                     if (current === generation) report('');
                 } catch (error) {
                     if (current === generation) report('外层颜色未同步：' + (error?.message || '取样失败') + '。页面和原壁纸保持不变。');
@@ -48,9 +48,12 @@ export function createEdgeColor(doc, publish, report = () => {}) {
         media?.removeEventListener?.('change', schedule);
         doc.removeEventListener('close', schedule, true);
     }
-    function apply(value) {
+    function apply(value, color = null) {
         const next = ['dark', 'soft'].includes(value) ? value : 'off';
-        if (next === mode || destroyed) return;
+        const target = typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : null;
+        if (destroyed || (next === mode && target === targetColor)) return;
+        targetColor = target;
+        if (next === 'off' && mode === 'off') return;
         mode = next; generation++;
         mode === 'off' ? unwatch() : watch();
         sync();

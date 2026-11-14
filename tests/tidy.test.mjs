@@ -419,3 +419,18 @@ test('边缘颜色独立保存、切换，关闭恢复原壁纸节点', async ()
     assert.match(doc.getElementById('bg1').style.backgroundImage, /original.png/);
     tidy.destroy(); dom.window.close();
 });
+
+test('渐变选色保存、重新打开保留，恢复跟随主题不改变模式', () => {
+    const { doc, tidy, c, dom } = setup({ edgeColor:'soft' }); tidy.init();
+    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
+    let picker = panel.querySelector('input[type=color]');
+    assert.ok(picker);
+    picker.value = '#abcdef'; picker.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(c.extensionSettings[TIDY].edgeGradientColor, '#abcdef');
+    tidy.render(panel);
+    assert.equal(panel.querySelector('input[type=color]').value, '#abcdef');
+    [...panel.querySelectorAll('button')].find(x => x.textContent === '恢复跟随主题').click();
+    assert.equal(c.extensionSettings[TIDY].edgeGradientColor, null);
+    assert.equal(c.extensionSettings[TIDY].edgeColor, 'soft');
+    tidy.destroy(); dom.window.close();
+});

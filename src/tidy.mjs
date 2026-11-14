@@ -46,6 +46,7 @@ export function normalizeTidy(v) {
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
     out.edgeColor = ['dark', 'soft'].includes(d.edgeColor) ? d.edgeColor : 'off';
+    out.edgeGradientColor = typeof d.edgeGradientColor === 'string' && /^#[0-9a-f]{6}$/i.test(d.edgeGradientColor) ? d.edgeGradientColor.toLowerCase() : null;
     return out;
 }
 // 认东西用的名字：有 id 用 id，没有就用「在哪 + 显示的字」
@@ -395,7 +396,7 @@ export function createTidy(host) {
     }
     function apply() {
         if (dead) return;
-        edgeColor.apply(S().edgeColor);
+        edgeColor.apply(S().edgeColor, S().edgeGradientColor);
         pause();
         undoAll();
         if (S().on && !yantaiOn()) {
@@ -614,6 +615,11 @@ export function createTidy(host) {
             h('div', { class: 'tvrm-actions' }, [['off', '关闭'], ['dark', '统一颜色'], ['soft', '柔和渐变']].map(([value, label]) =>
                 h('button', { type: 'button', class: 'menu_button', 'aria-pressed': st.edgeColor === value ? 'true' : 'false', onclick: () => change(x => { x.edgeColor = value; }) }, label))),
             h('p', { class: 'tvrm-note' }, '读取当前页面上下边缘的实际颜色，跟随主题和日夜切换；平板保留左右分区。柔和过渡只绘制在网页外层，不遮盖按钮，不隐藏壁纸。取样和色带仅在本机处理，临时色带用后清理。'),
+            st.edgeColor === 'soft' ? h('div', { class: 'tvrm-actions' },
+                h('label', null, '渐变外端颜色 ', h('input', { type: 'color', value: st.edgeGradientColor || '#808080', 'aria-label': '渐变外端颜色', onchange: event => change(x => { x.edgeGradientColor = event.target.value; }) })),
+                h('span', null, st.edgeGradientColor || '跟随当前主题（未自选）'),
+                btn('恢复跟随主题', () => change(x => { x.edgeGradientColor = null; }))) : null,
+            st.edgeColor === 'soft' ? h('p', { class: 'tvrm-note' }, '接缝颜色自动识别；往外渐变到你选的颜色。自选颜色会保留，日夜切换时接缝仍重新取样。') : null,
             edgeMessage ? h('p', { class: 'tvrm-tidy-warn' }, edgeMessage) : null,
             h('div', { class: 'tvrm-actions' }, btn('重新同步外层颜色', () => edgeColor.retry()))));
 
