@@ -610,10 +610,10 @@ export function createTidy(host) {
                 btn('复制检测结果', async () => { scrollProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(scrollProbe.report()); toast('success', '检测结果已复制'); } catch { toast('warning', '请在下方框内长按复制检测结果'); } })),
             h('textarea', { class: 'text_pole', readonly: true, rows: 5 }, scrollProbe.report())));
 
-        kids.push(part('edgeColor', '边缘颜色', { off: '关闭 · 使用原壁纸', dark: '统一深色', soft: '柔和渐变' }[st.edgeColor],
-            h('div', { class: 'tvrm-actions' }, [['off', '关闭'], ['dark', '统一深色'], ['soft', '柔和渐变']].map(([value, label]) =>
+        kids.push(part('edgeColor', '边缘颜色', { off: '关闭 · 使用原壁纸', dark: '统一颜色 · 自动取样', soft: '柔和渐变' }[st.edgeColor],
+            h('div', { class: 'tvrm-actions' }, [['off', '关闭'], ['dark', '统一颜色'], ['soft', '柔和渐变']].map(([value, label]) =>
                 h('button', { type: 'button', class: 'menu_button', 'aria-pressed': st.edgeColor === value ? 'true' : 'false', onclick: () => change(x => { x.edgeColor = value; }) }, label))),
-            h('p', { class: 'tvrm-note' }, '统一深色让外层接近黑色；柔和渐变以灰粉色连接上下边缘。开启时暂时隐藏壁纸，关闭后恢复。独立于界面整理和全屏。'),
+            h('p', { class: 'tvrm-note' }, '读取当前页面上下边缘的实际颜色，跟随主题和日夜切换；平板保留左右分区。柔和过渡只绘制在网页外层，不遮盖按钮，不隐藏壁纸。取样和色带仅在本机处理，临时色带用后清理。'),
             edgeMessage ? h('p', { class: 'tvrm-tidy-warn' }, edgeMessage) : null,
             h('div', { class: 'tvrm-actions' }, btn('重新同步外层颜色', () => edgeColor.retry()))));
 

@@ -1,0 +1,109 @@
+// Only the native backdrop changes. The page, wallpaper and controls are never styled.
+export function edgePixels(snapshot, rows, mode, base) {
+    const { width: w, height: h, insets: s } = snapshot;
+    const pixels = new Uint8ClampedArray(w * h * 4);
+    const write = (x, y, row, index, distance) => {
+        const i = (y * w + x) * 4, r = index * 4;
+        const mix = mode === 'soft' ? .12 * distance : 0;
+        for (let c = 0; c < 3; c++) pixels[i + c] = Math.round(row[r + c] * (1 - mix) + base[c] * mix);
+        pixels[i + 3] = 255;
+    };
+    for (let y = 0; y < s.top; y++) for (let x = 0; x < w; x++) write(x, y, rows.top, x, s.top > 1 ? (s.top - 1 - y) / (s.top - 1) : 0);
+    for (let y = h - s.bottom; y < h; y++) for (let x = 0; x < w; x++) write(x, y, rows.bottom, x, s.bottom > 1 ? (y - (h - s.bottom)) / (s.bottom - 1) : 0);
+    for (let y = s.top; y < h - s.bottom; y++) {
+        for (let x = 0; x < s.left; x++) write(x, y, rows.left, y, s.left > 1 ? (s.left - 1 - x) / (s.left - 1) : 0);
+        for (let x = w - s.right; x < w; x++) write(x, y, rows.right, y, s.right > 1 ? (x - (w - s.right)) / (s.right - 1) : 0);
+    }
+    return pixels;
+}
+
+export function createNativeEdge(doc, headers = () => ({})) {
+    const win = doc.defaultView;
+    const owned = new Set();
+    let sequence = 0;
+    const session = Math.random().toString(36).slice(2);
+    const abi = () => {
+        const host = win.__TAURITAVERN__;
+        if (!host?.invoke?.safeInvoke) throw Error('此环境没有 TT 原生边缘取样接口');
+        return host;
+    };
+    const invoke = (name, args) => abi().invoke.safeInvoke(name, args);
+    async function post(path, data) {
+        const res = await win.fetch(path, { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        if (!res.ok) throw Error('本地色带保存失败：' + res.status);
+        return res.json();
+    }
+    async function cleanup(except) {
+        for (const path of [...owned]) if (path !== except) {
+            try { await post('/api/images/delete', { path }); owned.delete(path); } catch { /* Retry only our own temporary files next time. */ }
+        }
+    }
+    function baseColor() {
+        const canvas = doc.createElement('canvas'); canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 1, 1);
+        ctx.fillStyle = win.getComputedStyle(doc.body).backgroundColor; ctx.fillRect(0, 0, 1, 1);
+        return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    }
+    async function restore() {
+        const snapshot = await invoke('get_window_snapshot');
+        const bg = doc.getElementById('bg1');
+        const style = bg && win.getComputedStyle(bg);
+        let resourcePath = null;
+        if (style && style.display !== 'none' && style.visibility !== 'hidden') {
+            const match = /^url\(["']?(.*?)["']?\)$/.exec(style.backgroundImage);
+            if (match) { const url = new URL(match[1], win.location.href); if (url.origin === win.location.origin) resourcePath = url.pathname; }
+        }
+        await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: baseColor(), wallpaper: { resourcePath, size: style?.backgroundSize || 'cover', position: style?.backgroundPosition || 'center' } } });
+        await cleanup();
+    }
+    async function apply(mode, isCurrent = () => true) {
+        if (mode === 'off') return restore();
+        if (!abi().api?.layout?.capture) throw Error('TT 未提供页面边缘取样接口');
+        if (doc.querySelector('dialog[open]')) return;
+        const snapshot = await invoke('get_window_snapshot');
+        if (!snapshot) throw Error('此宿主没有移动端窗口背景');
+        const { width: w, height: h, insets: s, scale } = snapshot;
+        if (!w || !h || w * h > 20000000) throw Error('不支持的窗口尺寸');
+        const contentW = w - s.left - s.right, contentH = h - s.top - s.bottom;
+        // A docked keyboard changes the content height, not the native window snapshot.
+        if (Math.abs(win.innerHeight * scale - contentH) > 8 || Math.abs(win.innerWidth * scale - contentW) > 8) return;
+        const blob = await abi().api.layout.capture();
+        if (!isCurrent()) return;
+        const url = win.URL.createObjectURL(blob), image = new win.Image();
+        try {
+            await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(Error('边缘取样失败')); image.src = url; });
+            const source = doc.createElement('canvas'); source.width = contentW; source.height = contentH;
+            const ctx = source.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(image, 0, 0, contentW, contentH);
+            const top = ctx.getImageData(0, 0, contentW, 1).data;
+            const bottom = ctx.getImageData(0, contentH - 1, contentW, 1).data;
+            const left = ctx.getImageData(0, 0, 1, contentH).data;
+            const right = ctx.getImageData(contentW - 1, 0, 1, contentH).data;
+            const row = (input, length, inset, count) => {
+                const out = new Uint8ClampedArray(length * 4);
+                for (let i = 0; i < length; i++) out.set(input.subarray(Math.max(0, Math.min(count - 1, i - inset)) * 4, (Math.max(0, Math.min(count - 1, i - inset)) + 1) * 4), i * 4);
+                return out;
+            };
+            const base = baseColor();
+            const pixels = edgePixels(snapshot, { top: row(top, w, s.left, contentW), bottom: row(bottom, w, s.left, contentW), left: row(left, h, s.top, contentH), right: row(right, h, s.top, contentH) }, mode, base);
+            const output = doc.createElement('canvas'); output.width = w; output.height = h;
+            const paint = output.getContext('2d'); const data = paint.createImageData(w, h); data.data.set(pixels); paint.putImageData(data, 0, 0);
+            // Only generated edge pixels are saved locally. The page screenshot is discarded.
+            if (!isCurrent()) return;
+            const saved = await post('/api/images/upload', { image: output.toDataURL('image/png').split(',')[1], format: 'png', ch_name: 'tvrm-edge-cache', filename: `edge-${session}-${++sequence}` });
+            const path = saved.path;
+            if (typeof path !== 'string' || !path.includes('/tvrm-edge-cache/')) throw Error('本地色带路径无效');
+            owned.add(path);
+            if (!isCurrent()) { await cleanup(); return; }
+            const latest = await invoke('get_window_snapshot');
+            if (!isCurrent() || latest.revision !== snapshot.revision) { await cleanup(); return; }
+            await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: base, wallpaper: { resourcePath: new URL('/' + path.replace(/^\/+/, ''), win.location.href).pathname, size: '100% 100%', position: 'center' } } });
+            await cleanup(path);
+        } catch (error) {
+            try { await restore(); } catch { /* Preserve the original failure for the settings panel. */ }
+            throw error;
+        } finally { win.URL.revokeObjectURL(url); }
+    }
+    return { apply };
+}

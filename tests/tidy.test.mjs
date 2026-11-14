@@ -406,13 +406,13 @@ test('边缘颜色独立保存、切换，关闭恢复原壁纸节点', async ()
     tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const click = name => [...panel.querySelectorAll('button')].find(b => b.textContent === name).click();
-    click('统一深色');
+    click('统一颜色');
     assert.equal(c.extensionSettings[TIDY].edgeColor, 'dark');
     assert.equal(c.extensionSettings[TIDY].on, false);
-    assert.ok(doc.body.classList.contains('tvrm-edge-dark'));
+    assert.equal(doc.body.classList.contains('tvrm-edge-dark'), false);
     click('柔和渐变');
     assert.equal(c.extensionSettings[TIDY].edgeColor, 'soft');
-    assert.ok(doc.getElementById('tvrm-edge-fade'));
+    assert.equal(doc.getElementById('tvrm-edge-fade'), null);
     click('关闭');
     assert.equal(c.extensionSettings[TIDY].edgeColor, 'off');
     assert.equal(doc.getElementById('tvrm-edge-fade'), null);

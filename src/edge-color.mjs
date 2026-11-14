@@ -1,35 +1,59 @@
-// TT draws the system areas itself. Publish through its first-party backdrop writer;
-// never overwrite the wallpaper URL, fitting or saved theme settings.
+// No CSS overlay, body recoloring or wallpaper hiding: only publish native edge pixels.
 export function createEdgeColor(doc, publish, report = () => {}) {
-    let mode = 'off', style = null, overlay = null, observer = null, generation = 0;
-    const css = `
-body.tvrm-edge-dark {background-color:#101012!important}
-body.tvrm-edge-soft {background-color:#503b43!important}
-body:is(.tvrm-edge-dark,.tvrm-edge-soft) :is(#bg1,#bg_custom) {display:none!important}
-#tvrm-edge-fade {position:fixed;inset:0;pointer-events:none!important;z-index:2147480000;background:linear-gradient(to bottom,#503b43 0,rgba(80,59,67,.55) 12px,transparent 64px,transparent calc(100% - 64px),rgba(80,59,67,.55) calc(100% - 12px),#503b43 100%)}
-`;
+    let mode = 'off', observer = null, timer = null, generation = 0;
+    let pending = false, running = false, destroyed = false;
+    const win = doc.defaultView;
+    const media = win.matchMedia?.('(prefers-color-scheme: dark)');
     async function sync() {
-        const current = ++generation;
-        try { await publish?.(); if (current === generation) report(''); }
-        catch { if (current === generation) report('页面效果已应用，但外层颜色同步失败；请确认使用 TT 2.4.0，并重试。'); }
+        pending = true;
+        if (running) return;
+        running = true;
+        try {
+            while (pending) {
+                pending = false;
+                const current = generation, value = mode;
+                try {
+                    if (!publish) throw Error('缺少 TT 原生背景接口');
+                    await publish(value, () => current === generation);
+                    if (current === generation) report('');
+                } catch (error) {
+                    if (current === generation) report('外层颜色未同步：' + (error?.message || '取样失败') + '。页面和原壁纸保持不变。');
+                }
+            }
+        } finally { running = false; }
+    }
+    function schedule() {
+        if (mode === 'off' || destroyed) return;
+        generation++;
+        win.clearTimeout(timer);
+        timer = win.setTimeout(sync, 250);
+    }
+    function watch() {
+        if (observer || !win.MutationObserver) return;
+        observer = new win.MutationObserver(schedule);
+        for (const node of [doc.documentElement, doc.body, doc.head, doc.getElementById('bg1'), doc.getElementById('bg_custom'), doc.getElementById('top-bar'), doc.getElementById('top-settings-holder'), doc.getElementById('send_form')].filter(Boolean)) {
+            observer.observe(node, { attributes: true, attributeFilter: ['style', 'class', 'href', 'media'], childList: node === doc.head, subtree: node === doc.head, characterData: node === doc.head });
+        }
+        win.addEventListener('tt-window-changed', schedule);
+        win.addEventListener('resize', schedule);
+        win.addEventListener('focus', schedule);
+        media?.addEventListener?.('change', schedule);
+        doc.addEventListener('close', schedule, true);
+    }
+    function unwatch() {
+        observer?.disconnect(); observer = null; win.clearTimeout(timer);
+        win.removeEventListener('tt-window-changed', schedule);
+        win.removeEventListener('resize', schedule);
+        win.removeEventListener('focus', schedule);
+        media?.removeEventListener?.('change', schedule);
+        doc.removeEventListener('close', schedule, true);
     }
     function apply(value) {
         const next = ['dark', 'soft'].includes(value) ? value : 'off';
-        if (next === mode) return;
-        mode = next;
-        doc.body.classList.remove('tvrm-edge-dark', 'tvrm-edge-soft');
-        overlay?.remove(); overlay = null;
-        if (mode !== 'off') {
-            if (!style) { style = doc.createElement('style'); style.textContent = css; doc.head.append(style); }
-            doc.body.classList.add('tvrm-edge-' + mode);
-            if (mode === 'soft') { overlay = doc.createElement('div'); overlay.id = 'tvrm-edge-fade'; overlay.setAttribute('aria-hidden', 'true'); doc.body.append(overlay); }
-            if (!observer && doc.defaultView.MutationObserver) {
-                observer = new doc.defaultView.MutationObserver(() => sync());
-                // Wallpaper changes still update their original DOM, ready to restore on exit.
-                for (const el of [doc.body, doc.getElementById('bg1')].filter(Boolean)) observer.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
-            }
-        } else { observer?.disconnect(); observer = null; style?.remove(); style = null; }
+        if (next === mode || destroyed) return;
+        mode = next; generation++;
+        mode === 'off' ? unwatch() : watch();
         sync();
     }
-    return { apply, retry: sync, destroy() { apply('off'); } };
+    return { apply, retry: sync, destroy() { if (mode !== 'off') apply('off'); destroyed = true; unwatch(); } };
 }

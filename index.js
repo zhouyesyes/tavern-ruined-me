@@ -8,6 +8,7 @@ import { createPresetKeeper } from './src/preset.mjs';
 import { createKeyKeeper } from './src/keysUI.mjs';
 import { parseModels, normalizeUrl } from './src/keys.mjs';
 import { createTidy } from './src/tidy.mjs';
+import { createNativeEdge } from './src/native-edge.mjs';
 // 整个模块一起导入，按名字去取：酒馆旧一点、少导出一个名字时，插件照样能加载（逐个 import 少一个就整个插件加载失败、从扩展列表里消失）
 import * as oai from '../../../openai.js';
 import * as secrets from '../../../secrets.js';
@@ -122,11 +123,7 @@ const keyKeeper = createKeyKeeper({
 
 // 界面格：把不常用的按钮和设置收起来（照砚台 · 界面整理的功能自己写的）
 const tidy = createTidy({
-    publishBackdrop: async () => {
-        if (!window.__TAURITAVERN__) throw new Error('当前不是 TT 宿主');
-        const { applyWindowBackdrop } = await import('../../../window-backdrop.js');
-        applyWindowBackdrop();
-    },
+    publishBackdrop: createNativeEdge(document, () => getContext().getRequestHeaders()).apply,
     document,
     getContext,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
