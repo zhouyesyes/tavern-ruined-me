@@ -71,7 +71,10 @@ export function createNativeEdge(doc, headers = () => ({}), installGuard = null)
         replayTask = (async () => {
             const snapshot = await invoke('get_window_snapshot');
             if (!snapshot || !enabled || !cached || !isCurrent()) return false;
-            await invoke('set_window_backdrop', { request: cachedRequest(snapshot) });
+            const request = cached.request.windowRevision === snapshot.revision
+                ? { windowRevision: snapshot.revision, color: cached.color }
+                : cachedRequest(snapshot);
+            await invoke('set_window_backdrop', { request });
             return true;
         })().finally(() => { replayTask = null; });
         return replayTask;
@@ -108,6 +111,15 @@ export function createNativeEdge(doc, headers = () => ({}), installGuard = null)
         cached = null;
         await cleanup();
     }
+    function appearanceSignature() {
+        const toolbar = [doc.getElementById('top-settings-holder'), doc.getElementById('top-bar')]
+            .filter(Boolean).find(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.height < 160 && r.bottom > 0 && r.top < win.innerHeight; });
+        if (!toolbar) throw Error('未找到顶部图标栏，无法识别底色');
+        const nodes = new Set([doc.documentElement, doc.body, doc.getElementById('top-bar'), doc.getElementById('bg1'), doc.getElementById('bg_custom')]);
+        for (let node = toolbar; node; node = node.parentElement) nodes.add(node);
+        const properties = ['background-color', 'background-image', 'background-size', 'background-position', 'opacity', 'filter', 'backdrop-filter', '-webkit-backdrop-filter', 'mix-blend-mode', 'display', 'visibility', 'color', '--sb-bar-bg', '--SmartThemeBlurTintColor'];
+        return { toolbar, signature: [...nodes].filter(Boolean).map(node => { const style = win.getComputedStyle(node); return properties.map(key => style.getPropertyValue(key)); }) };
+    }
     async function apply(mode, isCurrent = () => true, targetColor = null) {
         if (mode === 'off') return restore();
         enabled = true;
@@ -122,6 +134,11 @@ export function createNativeEdge(doc, headers = () => ({}), installGuard = null)
         const contentW = w - s.left - s.right, contentH = h - s.top - s.bottom;
         // A docked keyboard changes the content height, not the native window snapshot.
         if (Math.abs(win.innerHeight * scale - contentH) > 8 || Math.abs(win.innerWidth * scale - contentW) > 8) return;
+        const appearance = appearanceSignature();
+        const rect = appearance.toolbar.getBoundingClientRect();
+        const inputKey = JSON.stringify([snapshot.revision, w, h, scale, s, mode, mode === 'soft' ? targetColor : null, appearance.signature, [rect.left, rect.top, rect.width, rect.height]]);
+        // Menu/chat state mutations do not necessarily change the rendered background.
+        if (cached?.inputKey === inputKey) return;
         const blob = await abi().api.layout.capture();
         if (!isCurrent()) return;
         const url = win.URL.createObjectURL(blob), image = new win.Image();
@@ -130,16 +147,17 @@ export function createNativeEdge(doc, headers = () => ({}), installGuard = null)
             const source = doc.createElement('canvas'); source.width = contentW; source.height = contentH;
             const ctx = source.getContext('2d', { willReadFrequently: true });
             ctx.drawImage(image, 0, 0, contentW, contentH);
-            const toolbar = [doc.getElementById('top-settings-holder'), doc.getElementById('top-bar')]
-                .filter(Boolean).map(el => el.getBoundingClientRect())
-                .find(rect => rect.width > 0 && rect.height > 0 && rect.height < 160 && rect.bottom > 0 && rect.top < win.innerHeight);
-            if (!toolbar) throw Error('未找到顶部图标栏，无法识别底色');
+            const toolbar = appearance.toolbar.getBoundingClientRect();
             const x = Math.max(0, Math.min(contentW - 1, Math.floor(toolbar.left * scale)));
             const y = Math.max(0, Math.min(contentH - 1, Math.floor(toolbar.top * scale)));
             const sampleW = Math.max(1, Math.min(contentW - x, Math.floor(toolbar.width * scale)));
             const sampleH = Math.max(1, Math.min(contentH - y, Math.floor(toolbar.height * scale)));
             const color = toolbarColor(ctx.getImageData(x, y, sampleW, sampleH).data);
             const base = baseColor();
+            const visualKey = JSON.stringify([snapshot.revision, w, h, scale, s, mode, color, mode === 'soft' ? (targetColor || base) : null]);
+            // Even a changed stylesheet/wallpaper can produce the same toolbar color.
+            // Keep the native strip intact instead of clearing it for an identical image.
+            if (cached?.visualKey === visualKey) { if (isCurrent()) cached.inputKey = inputKey; return; }
             const pixels = edgePixels(snapshot, color, mode, base, targetColor);
             const output = doc.createElement('canvas'); output.width = w; output.height = h;
             const paint = output.getContext('2d'); const data = paint.createImageData(w, h); data.data.set(pixels); paint.putImageData(data, 0, 0);
@@ -154,7 +172,7 @@ export function createNativeEdge(doc, headers = () => ({}), installGuard = null)
             if (!isCurrent() || latest.revision !== snapshot.revision) { await cleanup(); return; }
             const request = { windowRevision: snapshot.revision, color, wallpaper: { resourcePath: new URL('/' + path.replace(/^\/+/, ''), win.location.href).pathname, size: '100% 100%', position: '0px 0px' } };
             await invoke('set_window_backdrop', { request });
-            cached = { request, color };
+            cached = { request, color, inputKey, visualKey };
             await cleanup(path);
         } catch (error) {
             if (!cached) { try { await restore(); } catch { /* Preserve the original failure for the settings panel. */ } }

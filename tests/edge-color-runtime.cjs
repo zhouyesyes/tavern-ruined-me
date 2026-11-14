@@ -18,7 +18,7 @@ const assert = require('node:assert/strict');
    await page.goto('http://edge.test/');
    await page.exposeFunction('capturePage', async () => (await page.screenshot()).toString('base64'));
    await page.evaluate(() => {
-    window.files = new Map(); window.requests = []; window.captures = 0; window.snapshotRevision = 1; window.installs = 0;
+    window.files = new Map(); window.requests = []; window.captures = 0; window.uploads = 0; window.snapshotRevision = 1; window.installs = 0;
     window.__TAURITAVERN__ = { invoke: { safeInvoke: async (command, args) => {
      if (command === 'get_window_snapshot') return { revision: snapshotRevision, width: innerWidth, height: innerHeight + 56, scale: 1, insets: { top:32, bottom:24, left:0, right:0 } };
      if (command === 'set_window_backdrop') {
@@ -33,7 +33,7 @@ const assert = require('node:assert/strict');
     } }, api: { layout: { capture: async () => { captures++; return new Blob([Uint8Array.from(atob(await capturePage()), c => c.charCodeAt(0))], { type:'image/png' }); } } } };
     window.fetch = async (url, options) => {
      const body = JSON.parse(options.body);
-     if (url === '/api/images/upload') { const path = 'user/images/' + body.ch_name + '/' + body.filename + '.png'; files.set('/' + path, body.image); return { ok:true, json:async () => ({ path }) }; }
+     if (url === '/api/images/upload') { uploads++; const path = 'user/images/' + body.ch_name + '/' + body.filename + '.png'; files.set('/' + path, body.image); return { ok:true, json:async () => ({ path }) }; }
      if (url === '/api/images/delete') { files.delete('/' + body.path.replace(/^\/+/,'')); return { ok:true, json:async () => ({}) }; }
      throw Error(url);
     };
@@ -52,15 +52,36 @@ const assert = require('node:assert/strict');
      const ctx = canvas.getContext('2d'); ctx.drawImage(image,0,0);
      const pixel = (x,y) => [...ctx.getImageData(x,y,1,1).data];
      results.push({ mode, target, outer:pixel(5,0), width:image.width, height:image.height, left:pixel(5,31), right:pixel(innerWidth-5,31), bottom:pixel(5,808), middle:pixel(10,100), files:files.size });
+     const unchanged = { captures, uploads, requests:requests.length };
+     for (let i = 0; i < 4; i++) {
+      document.body.classList.toggle('menu-open');
+      document.querySelector('#top-settings-holder button').classList.toggle('active-icon');
+      await edge.apply(mode, () => true, target);
+     }
+     if (captures !== unchanged.captures || uploads !== unchanged.uploads || requests.length !== unchanged.requests) throw Error('Unchanged menu/chat interaction repainted the gradient');
+     const bg = document.getElementById('bg1'), originalStyle = bg.getAttribute('style');
+     bg.style.backgroundImage = "url('/backgrounds/original.svg?chat=other')";
+     await edge.apply(mode, () => true, target);
+     if (captures !== unchanged.captures + 1 || uploads !== unchanged.uploads || requests.length !== unchanged.requests) throw Error('Identical sampled color replaced the native strip');
+     bg.setAttribute('style', originalStyle);
+     await edge.apply(mode, () => true, target);
+     if (uploads !== unchanged.uploads || requests.length !== unchanged.requests) throw Error('Restored wallpaper replaced the same gradient');
      const beforeReplay = captures;
      const original = { windowRevision: snapshotRevision, color:[255,255,255], wallpaper:{ resourcePath:'/backgrounds/original.svg', size:'cover', position:'100% 100%' } };
      await hostBackdrop('set_window_backdrop', { request:original });
      if (requests.at(-1).wallpaper !== undefined) throw Error('Host cleared/replaced the cached strips');
      await edge.replay();
+     if (requests.at(-1).wallpaper !== undefined) throw Error('Same-window resume cleared the gradient');
      if (captures !== beforeReplay || files.size !== 1) throw Error('Resume took another screenshot or uploaded another image');
      if (__TAURITAVERN__.invoke.safeInvoke !== originalInvoke) throw Error('Global invoke was modified');
 
     }
+    const toolbar = document.getElementById('top-settings-holder'), previous = toolbar.getAttribute('style'), oldUploads = uploads;
+    toolbar.style.backgroundColor = 'rgb(30, 60, 90)';
+    await edge.apply('soft', () => true, '#abcdef');
+    if (uploads !== oldUploads + 1 || requests.at(-1).color.join(',') !== '30,60,90') throw Error('Actual theme change was not applied');
+    if (previous === null) toolbar.removeAttribute('style'); else toolbar.setAttribute('style', previous);
+    await edge.apply('soft', () => true, '#abcdef');
     snapshotRevision++;
     await hostBackdrop('set_window_backdrop', { request:{windowRevision:snapshotRevision,color:[255,255,255],wallpaper:{resourcePath:'/backgrounds/original.svg',size:'cover',position:'100% 100%'}} });
     if (requests.at(-1).wallpaper.resourcePath !== null) throw Error('Changed geometry restored the old wallpaper');
@@ -84,7 +105,7 @@ const assert = require('node:assert/strict');
    assert.equal(result.restorePosition,'100% 100%');
    assert.equal(result.remaining,0); assert.equal(result.restore,'/backgrounds/original.svg'); assert.equal(result.overlay,false);
    assert.equal(await page.locator('#send').isEnabled(),true);
-   console.log(`PASS ${width}px ${day ? 'day' : 'night'}: page unchanged; native colors match; no overlay; wallpaper restored; temporary files cleaned; host replay guarded; resume uses cache`);
+   console.log(`PASS ${width}px ${day ? 'day' : 'night'}: page unchanged; native colors match; no overlay; wallpaper restored; temporary files cleaned; host replay guarded; resume retains strips; unchanged clicks do not repaint; real theme changes update`);
    await page.close();
   }
  } finally { await browser.close(); }
