@@ -127,7 +127,7 @@ export function createTidy(host) {
     let style = null;
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
     let edgeMessage = '';
-    const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } });
+    const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } }, host.resumeBackdrop);
 
     // —— 记账：加过的 class、改过的行内样式、挪过的菜单项、插进去的东西，还原时一样样退回去 ——
     const classes = new Map(); // 元素 → Set(class)

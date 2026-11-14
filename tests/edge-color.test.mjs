@@ -104,3 +104,19 @@ test('图标栏主背景色不受少量图标、文字和图片杂色干扰', ()
     assert.deepEqual(toolbarColor(Uint8ClampedArray.from([243,239,230,255,20,20,20,255,243,239,230,255])), [243,239,230]);
     assert.throws(() => toolbarColor(new Uint8ClampedArray(4)), /未能识别/);
 });
+
+test('前台恢复立即重放缓存，合并焦点事件，不等待重新取样；关闭后不再重放', async () => {
+    const dom = new JSDOM('<body></body>', { pretendToBeVisual:true });
+    let sampled = 0, replayed = 0;
+    const edge = createEdgeColor(dom.window.document, async () => { sampled++; }, () => {}, async valid => { assert.equal(valid(), true); replayed++; });
+    edge.apply('dark'); await tick(); assert.equal(sampled, 1);
+    dom.window.dispatchEvent(new dom.window.Event('focus'));
+    dom.window.dispatchEvent(new dom.window.Event('pageshow'));
+    dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
+    await tick();
+    assert.ok(replayed >= 1); assert.equal(sampled, 1);
+    await new Promise(r => setTimeout(r, 300)); assert.equal(sampled, 2);
+    edge.apply('off'); await tick(); const before = replayed;
+    dom.window.dispatchEvent(new dom.window.Event('focus')); await tick(); assert.equal(replayed, before);
+    edge.destroy(); dom.window.close();
+});

@@ -122,8 +122,14 @@ const keyKeeper = createKeyKeeper({
 });
 
 // 界面格：把不常用的按钮和设置收起来（照砚台 · 界面整理的功能自己写的）
+const nativeEdge = createNativeEdge(document, () => getContext().getRequestHeaders(), async guard => {
+    const { installWindowBackdrop } = await import('../../../window-backdrop.js');
+    // Install once into TT's own background writer; never replace global invoke/fetch.
+    installWindowBackdrop({ safeInvoke: guard });
+});
 const tidy = createTidy({
-    publishBackdrop: createNativeEdge(document, () => getContext().getRequestHeaders()).apply,
+    publishBackdrop: nativeEdge.apply,
+    resumeBackdrop: nativeEdge.replay,
     document,
     getContext,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),

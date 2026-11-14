@@ -1,5 +1,5 @@
 // No CSS overlay, body recoloring or wallpaper hiding: only publish native edge pixels.
-export function createEdgeColor(doc, publish, report = () => {}) {
+export function createEdgeColor(doc, publish, report = () => {}, replay = null) {
     let mode = 'off', targetColor = null, observer = null, timer = null, generation = 0;
     let pending = false, running = false, destroyed = false;
     const win = doc.defaultView;
@@ -28,23 +28,35 @@ export function createEdgeColor(doc, publish, report = () => {}) {
         win.clearTimeout(timer);
         timer = win.setTimeout(sync, 250);
     }
+    function resume() {
+        if (mode === 'off' || destroyed || doc.visibilityState === 'hidden') return;
+        schedule();
+        const selected = mode, color = targetColor;
+        // Cached native colors do not wait for the normal sampling debounce/upload.
+        if (replay) Promise.resolve().then(() => replay(() => mode === selected && targetColor === color && mode !== 'off' && !destroyed)).catch(() => {});
+
+    }
     function watch() {
         if (observer || !win.MutationObserver) return;
         observer = new win.MutationObserver(schedule);
         for (const node of [doc.documentElement, doc.body, doc.head, doc.getElementById('bg1'), doc.getElementById('bg_custom'), doc.getElementById('top-bar'), doc.getElementById('top-settings-holder'), doc.getElementById('send_form')].filter(Boolean)) {
             observer.observe(node, { attributes: true, attributeFilter: ['style', 'class', 'href', 'media'], childList: node === doc.head, subtree: node === doc.head, characterData: node === doc.head });
         }
-        win.addEventListener('tt-window-changed', schedule);
+        win.addEventListener('tt-window-changed', resume);
         win.addEventListener('resize', schedule);
-        win.addEventListener('focus', schedule);
+        win.addEventListener('focus', resume);
+        win.addEventListener('pageshow', resume);
+        doc.addEventListener('visibilitychange', resume);
         media?.addEventListener?.('change', schedule);
         doc.addEventListener('close', schedule, true);
     }
     function unwatch() {
         observer?.disconnect(); observer = null; win.clearTimeout(timer);
-        win.removeEventListener('tt-window-changed', schedule);
+        win.removeEventListener('tt-window-changed', resume);
         win.removeEventListener('resize', schedule);
-        win.removeEventListener('focus', schedule);
+        win.removeEventListener('focus', resume);
+        win.removeEventListener('pageshow', resume);
+        doc.removeEventListener('visibilitychange', resume);
         media?.removeEventListener?.('change', schedule);
         doc.removeEventListener('close', schedule, true);
     }

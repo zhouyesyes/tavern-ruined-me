@@ -33,10 +33,10 @@ export function toolbarColor(pixels) {
     return [(winner >> 16) & 255, (winner >> 8) & 255, winner & 255];
 }
 
-export function createNativeEdge(doc, headers = () => ({})) {
+export function createNativeEdge(doc, headers = () => ({}), installGuard = null) {
     const win = doc.defaultView;
     const owned = new Set();
-    let sequence = 0;
+    let sequence = 0, cached = null, enabled = false, guardReady = null, replayTask = null;
     const session = Math.random().toString(36).slice(2);
     const abi = () => {
         const host = win.__TAURITAVERN__;
@@ -44,6 +44,39 @@ export function createNativeEdge(doc, headers = () => ({})) {
         return host;
     };
     const invoke = (name, args) => abi().invoke.safeInvoke(name, args);
+    function cachedRequest(snapshot) {
+        if (cached.request.windowRevision === snapshot.revision) return { ...cached.request, windowRevision: snapshot.revision };
+        // Geometry changed: keep the known toolbar color until the new strip is ready.
+        return { windowRevision: snapshot.revision, color: cached.color, wallpaper: { resourcePath: null, size: 'cover', position: '0px 0px' } };
+    }
+    async function guard(command, args) {
+        if (command === 'set_window_backdrop' && enabled && cached && args?.request) {
+            const revision = args.request.windowRevision;
+            // Same geometry: keep the existing strips, rather than clearing/decoding them.
+            const request = cached.request.windowRevision === revision
+                ? { windowRevision: revision, color: cached.color }
+                : cachedRequest({ revision });
+            return invoke(command, { ...args, request });
+        }
+        return invoke(command, args);
+    }
+    async function ensureGuard() {
+        if (!installGuard) return;
+        if (!guardReady) guardReady = Promise.resolve().then(() => installGuard(guard)).catch(error => { guardReady = null; throw error; });
+        await guardReady;
+    }
+    function replay(isCurrent = () => true) {
+        if (!enabled || !cached) return Promise.resolve(false);
+        if (replayTask) return replayTask;
+        replayTask = (async () => {
+            const snapshot = await invoke('get_window_snapshot');
+            if (!snapshot || !enabled || !cached || !isCurrent()) return false;
+            await invoke('set_window_backdrop', { request: cachedRequest(snapshot) });
+            return true;
+        })().finally(() => { replayTask = null; });
+        return replayTask;
+    }
+
     async function post(path, data) {
         const res = await win.fetch(path, { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
         if (!res.ok) throw Error('本地色带保存失败：' + res.status);
@@ -62,6 +95,7 @@ export function createNativeEdge(doc, headers = () => ({})) {
         return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
     }
     async function restore() {
+        enabled = false;
         const snapshot = await invoke('get_window_snapshot');
         const bg = doc.getElementById('bg1');
         const style = bg && win.getComputedStyle(bg);
@@ -71,10 +105,14 @@ export function createNativeEdge(doc, headers = () => ({})) {
             if (match) { const url = new URL(match[1], win.location.href); if (url.origin === win.location.origin) resourcePath = url.pathname; }
         }
         await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: baseColor(), wallpaper: { resourcePath, size: style?.backgroundSize || 'cover', position: `${style?.backgroundPositionX || '50%'} ${style?.backgroundPositionY || '50%'}` } } });
+        cached = null;
         await cleanup();
     }
     async function apply(mode, isCurrent = () => true, targetColor = null) {
         if (mode === 'off') return restore();
+        enabled = true;
+        await ensureGuard();
+        if (!isCurrent()) return;
         if (!abi().api?.layout?.capture) throw Error('TT 未提供页面边缘取样接口');
         if (doc.querySelector('dialog[open]')) return;
         const snapshot = await invoke('get_window_snapshot');
@@ -114,12 +152,14 @@ export function createNativeEdge(doc, headers = () => ({})) {
             if (!isCurrent()) { await cleanup(); return; }
             const latest = await invoke('get_window_snapshot');
             if (!isCurrent() || latest.revision !== snapshot.revision) { await cleanup(); return; }
-            await invoke('set_window_backdrop', { request: { windowRevision: snapshot.revision, color: base, wallpaper: { resourcePath: new URL('/' + path.replace(/^\/+/, ''), win.location.href).pathname, size: '100% 100%', position: '0px 0px' } } });
+            const request = { windowRevision: snapshot.revision, color, wallpaper: { resourcePath: new URL('/' + path.replace(/^\/+/, ''), win.location.href).pathname, size: '100% 100%', position: '0px 0px' } };
+            await invoke('set_window_backdrop', { request });
+            cached = { request, color };
             await cleanup(path);
         } catch (error) {
-            try { await restore(); } catch { /* Preserve the original failure for the settings panel. */ }
+            if (!cached) { try { await restore(); } catch { /* Preserve the original failure for the settings panel. */ } }
             throw error;
         } finally { win.URL.revokeObjectURL(url); }
     }
-    return { apply };
+    return { apply, replay };
 }
