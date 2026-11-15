@@ -10,7 +10,7 @@
 }
 .tvrm-panel { display: flex; flex-direction: column; gap: 10px; padding: 6px 0; }
 
-/* 顶上三个小标签 */
+/* 顶部功能标签 */
 .tvrm-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--tvrm-line); }
 .tvrm-tab { all: unset; box-sizing: border-box; cursor: pointer; padding: 6px 12px; color: var(--tvrm-dim);
     border-bottom: 2px solid transparent; display: flex; gap: 4px; align-items: baseline; }

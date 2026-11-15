@@ -521,14 +521,14 @@ export function createTidy(host) {
     const flip = (list, key, yes) => { const set = new Set(list); yes ? set.add(key) : set.delete(key); return [...set]; };
     const openParts = new Set();
     function part(key, title, sub, ...body) {
-        const d = h('details', { class: 'tvrm-card tvrm-tidy-part', open: openParts.has(key) },
+        const d = h('details', { class: 'tvrm-card tvrm-tidy-part', 'data-tvrm-part':key, open: openParts.has(key) },
             h('summary', null, h('div', { class: 'tvrm-card-head' }, h('div', { class: 'tvrm-card-title' }, h('b', null, title), h('small', null, sub)))),
             h('div', { class: 'tvrm-card-body' }, body));
         d.addEventListener('toggle', () => { d.open ? openParts.add(key) : openParts.delete(key); });
         return d;
     }
-    function render(box) {
-        rerender = () => { if (box.isConnected) render(box); };
+    function render(box, page = 'interface') {
+        rerender = () => { if (box.isConnected) render(box, page); };
         const st = S();
         const scroll = box.scrollTop;
         const kids = [];
@@ -602,7 +602,7 @@ export function createTidy(host) {
 
         kids.push(part('quickReplyFold', '快捷回复栏收放', st.quickReplyFold ? '随输入自动收放' : '使用原布局',
             check('点输入框展开快捷回复', st.quickReplyFold, value => change(x => { x.quickReplyFold = value; }), '点输入框时展开，滑动聊天或点到其他地方时收起；操作快捷按钮不会提前收起。'),
-            h('p', { class:'tvrm-note' }, '展开状态自动记住。只折叠原生内嵌快捷栏，不改快捷回复内容和自动执行设置；关闭此选项恢复原布局。')));
+            h('p', { class:'tvrm-note' }, '展开状态仅在当前页面临时保留。只折叠原生内嵌快捷栏，不改快捷回复内容和自动执行设置；关闭此选项恢复原布局。')));
 
         kids.push(part('chatJumpProbe', '聊天跳动检测', chatProbe.running ? '正在记录 · 60 秒后停止' : '记录定位命令与消息高度变化',
             h('p', { class: 'tvrm-note' }, '先开始记录，再重新进入会跳的聊天并往上翻；回来停止并复制结果。只记录位置、楼层编号和调用函数名，不读取正文，不改变滚动位置。'),
@@ -622,7 +622,15 @@ export function createTidy(host) {
             edgeMessage ? h('p', { class: 'tvrm-tidy-warn' }, edgeMessage) : null,
             h('div', { class: 'tvrm-actions' }, btn('重新同步外层颜色', () => edgeColor.retry()))));
 
-        box.replaceChildren(...kids);
+        const interfaceKeys = new Set(['organize', 'quickReplyFold', 'edgeColor']);
+        const diagnosticKeys = new Set(['scrollProbe', 'chatJumpProbe']);
+        if (page === 'optimization') {
+            const optimizations = kids.filter(node => !interfaceKeys.has(node.dataset.tvrmPart) && !diagnosticKeys.has(node.dataset.tvrmPart));
+            const diagnostics = kids.filter(node => diagnosticKeys.has(node.dataset.tvrmPart));
+            box.replaceChildren(...optimizations, part('diagnostics', '检测工具', '滑动延迟检测、聊天跳动检测', diagnostics));
+        } else {
+            box.replaceChildren(...kids.filter(node => interfaceKeys.has(node.dataset.tvrmPart)));
+        }
         box.scrollTop = scroll;
     }
 

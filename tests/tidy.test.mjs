@@ -293,13 +293,19 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 9);
+    assert.equal(groups.length, 3);
+    assert.deepEqual(groups.map(node => node.dataset.tvrmPart), ['organize', 'quickReplyFold', 'edgeColor']);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
     assert.ok([...group.querySelectorAll('label')].some(x => x.textContent === '开启界面整理'));
     assert.ok(!group.textContent.includes('滑动空白修复'));
     assert.ok(!group.textContent.includes('页面全屏'));
+    tidy.render(panel, 'optimization');
+    assert.deepEqual([...panel.children].map(node => node.dataset.tvrmPart), ['smooth', 'worldDuplicateFix', 'chatStability', 'replyNavigation', 'diagnostics']);
+    const diagnostics = panel.querySelector('[data-tvrm-part=diagnostics]');
+    assert.equal(diagnostics.open, false);
+    assert.deepEqual([...diagnostics.querySelectorAll('details')].map(node => node.dataset.tvrmPart), ['scrollProbe', 'chatJumpProbe']);
     tidy.destroy();
 });
 
@@ -411,7 +417,7 @@ test('世界书显示保护独立开关保存并立即恢复，可再次开启�
     const { doc, tidy, c, dom } = setup({ on:false, worldDuplicateFix:true }, '<div id="world_popup_entries_list"><div class="world_entry" uid="1"><textarea name="comment">同条目</textarea></div><div class="world_entry" uid="1"><textarea name="comment">同条目</textarea></div></div>');
     const nodes=[...doc.querySelectorAll('.world_entry')]; tidy.init(); await tick();
     assert.ok(nodes[1].classList.contains('tvrm-world-duplicate'));
-    const panel=doc.createElement('div');doc.body.append(panel);tidy.render(panel);
+    const panel=doc.createElement('div');doc.body.append(panel);tidy.render(panel, 'optimization');
     assert.match(panel.textContent,/TT 2.4.0/);assert.match(panel.textContent,/不能认定为 TT 独有/);
     const toggle=()=>[...panel.querySelectorAll('label')].find(x=>x.textContent.startsWith('启用世界书重复显示保护')).querySelector('input');
     let input=toggle();input.checked=false;input.dispatchEvent(new dom.window.Event('change'));await tick();
