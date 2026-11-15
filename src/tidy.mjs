@@ -130,6 +130,11 @@ export function createTidy(host) {
     const save = () => { ctx().extensionSettings[TIDY] = s; ctx().saveSettingsDebounced?.(); };
     let rerender = null; let dead = false; let queued = false; let frame = null;
     let style = null;
+    const originalSmooth = doc.body.classList.contains('tvrm-tidy-smooth');
+    function syncSmooth(value) {
+        const active = originalSmooth || value;
+        if (doc.body.classList.contains('tvrm-tidy-smooth') !== active) doc.body.classList.toggle('tvrm-tidy-smooth', active);
+    }
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
     const worldDisplay = createWorldDisplayGuard(doc);
     const chatProbe = createChatJumpProbe(doc, () => ({ ...host.chatPreferences?.(), chatStability:S().chatStability }), () => rerender?.());
@@ -419,7 +424,8 @@ export function createTidy(host) {
                 try { f(); } catch (e) { console.warn('[酒馆你害我不浅] 界面整理出错', e); }
             }
         }
-        if (S().smooth) addClass(doc.body, 'tvrm-tidy-smooth');
+        // Keep the rendering policy independent of menu undo/rebuild operations.
+        syncSmooth(S().smooth);
         watch();
     }
 
@@ -452,7 +458,8 @@ export function createTidy(host) {
             const dots = e.target.closest?.('.tvrm-tidy-dots'); if (!dots || !dotsToggle.has(dots)) return;
             e.preventDefault(); e.stopImmediatePropagation(); dotsToggle.get(dots)();
         }, true);
-        doc.addEventListener('click', e => { if (e.target.closest?.('#extensionsMenuButton,#extensions-settings-button > .drawer-toggle,#user-settings-button > .drawer-toggle,#options_button')) schedule(); }, true);
+        // Existing menus need no rebuild on open/close. The scoped observers
+        // above already pick up buttons/extensions that are actually added.
         host.on?.('APP_READY', schedule);
         host.on?.('CHAT_CHANGED', chatProbe.chatChanged);
         host.on?.('CHAT_CHANGED', chatStability.chatChanged);
@@ -679,5 +686,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { quickReplyFold.destroy(); replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { quickReplyFold.destroy(); replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); syncSmooth(false); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }

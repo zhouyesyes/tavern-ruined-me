@@ -56,6 +56,26 @@ function setup(saved, extra = '') {
     const tidy = createTidy({ document: dom.window.document, getContext: () => c, toast: (k, m) => toasts.push(m), confirm: async () => true });
     return { dom, doc: dom.window.document, c, tidy, toasts };
 }
+
+test('菜单开合不重建已整理节点；重复整理也不切换聊天渲染策略', async () => {
+    const { doc, tidy, dom } = setup({ on:true, smooth:true }, '<button id="options_button">菜单</button>');
+    tidy.init();
+    const menu = doc.querySelector('#options .tvrm-tidy-more');
+    const changes = [];
+    const observer = new dom.window.MutationObserver(records => changes.push(...records));
+    observer.observe(doc.body, { attributes:true, attributeFilter:['class'], attributeOldValue:true });
+    doc.getElementById('options_button').click();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.equal(doc.querySelector('#options .tvrm-tidy-more'), menu);
+    tidy.apply(); await Promise.resolve();
+    assert.equal(changes.length, 0, '菜单刷新不能暂时移除 content-visibility 修复');
+    tidy.settings().smooth = false; tidy.apply();
+    assert.equal(doc.body.classList.contains('tvrm-tidy-smooth'), false);
+    tidy.settings().smooth = true; tidy.apply();
+    tidy.destroy();
+    assert.equal(doc.body.classList.contains('tvrm-tidy-smooth'), false);
+    observer.disconnect(); dom.window.close();
+});
 const gone = el => el.classList.contains('tvrm-tidy-gone');
 
 test('设置整理：默认不开；扩展程序图标也能收', () => {
@@ -350,13 +370,13 @@ test('同一帧连续触发只整理一次，销毁会取消未执行的整理',
     doc.defaultView.cancelAnimationFrame = id => { assert.equal(id, 123); cancelled = true; task = null; };
     tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
-    const trigger = doc.createElement('button'); trigger.id = 'options_button'; doc.body.append(trigger);
+    const trigger = () => doc.getElementById('extensionsMenu').append(doc.createElement('button'));
     const initial = panel.firstElementChild;
-    trigger.click(); trigger.click(); trigger.click();
+    trigger(); trigger(); trigger(); await Promise.resolve();
     assert.equal(panel.firstElementChild, initial); assert.ok(task);
     const run = task; task = null; run();
     assert.notEqual(panel.firstElementChild, initial);
-    trigger.click(); tidy.destroy(); assert.equal(cancelled, true);
+    trigger(); await Promise.resolve(); tidy.destroy(); assert.equal(cancelled, true);
 });
 
 test('设置搜索只在开始和清空时整理，连续输入不反复拆建其他页面', async () => {

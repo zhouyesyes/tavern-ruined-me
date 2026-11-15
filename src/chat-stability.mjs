@@ -5,12 +5,14 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
     let enabled = false, root = null, resize = null, mutation = null, watched = new Set();
     let state = null, anchor = null, following = false, frame = null, idle = null, touch = false, browsing = false;
     let lastIntent = -Infinity, editTarget = null, chromeUntil = 0, pinnedReply = false;
+    const cardDocuments = new Map();
     const measure = () => root ? { top:root.scrollTop, height:root.scrollHeight, view:root.clientHeight } : null;
     const atEnd = value => value && value.height - value.view - value.top < 24;
     const supported = () => enabled && root?.isConnected && root.getAttribute('data-tt-chat-surface') !== 'bounded'
         && typeof getContext()?.scrollChatSurfaceTo === 'function';
     const autoBottom = () => preferences()?.autoBottom !== false;
-    const editing = () => editTarget && doc.activeElement === editTarget && root?.contains(editTarget);
+    const editing = () => editTarget && editTarget.ownerDocument.activeElement === editTarget
+        && (root?.contains(editTarget) || [...cardDocuments.values()].some(record => record.document === editTarget.ownerDocument));
     function pickAnchor() {
         if (!root || !root.clientHeight) return null;
         const top = root.getBoundingClientRect().top + root.clientTop, bottom = top + root.clientHeight;
@@ -75,9 +77,12 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
         if (next === root) return;
         resize?.disconnect(); mutation?.disconnect(); watched.clear(); root = next; state = anchor = null;
         if (!root || !win.ResizeObserver) return;
-        resize = new win.ResizeObserver(schedule); watchMessages();
-        mutation = new win.MutationObserver(() => { watchMessages(); schedule(); });
-        mutation.observe(root, { childList:true, attributes:true, attributeFilter:['data-tt-chat-surface'] });
+        resize = new win.ResizeObserver(schedule); watchMessages(); syncCards();
+        mutation = new win.MutationObserver(records => {
+            if (records.some(record => record.target === root)) { watchMessages(); schedule(); }
+            if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1 && (node.matches('iframe') || node.querySelector('iframe'))))) syncCards();
+        });
+        mutation.observe(root, { childList:true, subtree:true, attributes:true, attributeFilter:['data-tt-chat-surface'] });
     }
     function chatChanged() {
         if (!enabled) return;
@@ -88,18 +93,22 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
         if (event.target !== root || !supported()) return;
         if (browsing || touch) { state = measure(); anchor = pickAnchor(); settle(); return; }
         const current = measure();
-        // A scroll event alone is not evidence of user navigation. WebKit/frame
-        // focus may move the parent before ResizeObserver reports any height change.
-        if ((following && autoBottom() && !atEnd(current)) || (win.performance.now() < chromeUntil && anchor?.node.isConnected)) { schedule(); return; }
+        // Correct observable layout/menu drift, but do not infer lack of user
+        // intent just because an iframe did not deliver its gesture to this document.
+        const changed = state && (Math.abs(current.height - state.height) > 1 || Math.abs(current.view - state.view) > 1);
+        if ((following && autoBottom() && !atEnd(current) && changed) || (win.performance.now() < chromeUntil && (following || anchor?.node.isConnected))) { schedule(); return; }
         if (state && Math.abs(current.height - state.height) <= 1 && Math.abs(current.view - state.view) <= 1) {
+            if (Math.abs(current.top - state.top) > 1) pinnedReply = false;
             state = current;
-            if (!pinnedReply && autoBottom() && atEnd(current)) following = true;
+            // Cross-origin card gestures are invisible here. Do not interpret every
+            // unchanged-layout scroll as a fault and fight it indefinitely.
+            following = !!(!pinnedReply && autoBottom() && atEnd(current));
             if (!pinnedReply) anchor = following ? null : pickAnchor();
         }
     };
-    const input = event => {
+    const input = (event, fromCard = false) => {
         if (!enabled) return;
-        const menu = event.target.closest?.('#options_button,#options,.options-content,#tvrm-quick-reply-toggle,#extensionsMenuButton,#extensionsMenu,#top-settings-holder,#top-bar');
+        const menu = !fromCard && event.target.closest?.('#options_button,#options,.options-content,#tvrm-quick-reply-toggle,#extensionsMenuButton,#extensionsMenu,#top-settings-holder,#top-bar');
         if (menu || (event.type === 'keydown' && event.key === 'Escape' && win.performance.now() < chromeUntil)) {
             // Opening/closing chrome is not a request to move the conversation.
             chromeUntil = win.performance.now() + 2000;
@@ -111,12 +120,12 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
         if (event.type === 'focusin') {
             // Programmatic autofocus is trusted too; require preceding user intent.
             if (win.performance.now() - lastIntent > 1000) { trace({ action:'忽略自动焦点', tag:event.target.tagName, following }); return; }
-            editTarget = isEditable && root?.contains(event.target) ? event.target : null;
+            editTarget = isEditable && (fromCard || root?.contains(event.target)) ? event.target : null;
             return;
         }
         lastIntent = win.performance.now(); chromeUntil = 0; pinnedReply = false;
-        if (event.type === 'pointerdown' || event.type === 'keydown') editTarget = isEditable && root?.contains(event.target) ? event.target : null;
-        if (root?.contains(event.target)) {
+        if (event.type === 'pointerdown' || event.type === 'keydown') editTarget = isEditable && (fromCard || root?.contains(event.target)) ? event.target : null;
+        if (fromCard || root?.contains(event.target)) {
             browsing = true; following = false;
             if (event.type === 'touchstart' || event.type === 'touchmove') touch = true;
             if (event.type === 'touchend' || event.type === 'touchcancel') touch = false;
@@ -127,6 +136,34 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
             following = false; anchor = null; state = measure();
         }
     };
+    // Events inside an iframe do not bubble to the outer document. Observe only
+    // accessible card documents; never inject scripts or read their content.
+    function syncCards() {
+        const seen = new Map();
+        function visit(container) {
+            for (const frame of container?.querySelectorAll('iframe') || []) {
+                try {
+                    const child = frame.contentDocument;
+                    if (!child || seen.has(frame)) continue;
+                    seen.set(frame, child); visit(child);
+                } catch { /* Opaque cards are handled conservatively by scroll(). */ }
+            }
+        }
+        if (enabled) visit(root);
+        for (const [frame, record] of cardDocuments) if (seen.get(frame) !== record.document) {
+            for (const name of cardEvents) record.document.removeEventListener(name, record.input, true);
+            record.document.removeEventListener('load', syncCards, true);
+            cardDocuments.delete(frame);
+        }
+        for (const [frame, child] of seen) if (!cardDocuments.has(frame)) {
+            const handler = event => input(event, true);
+            for (const name of cardEvents) child.addEventListener(name, handler, { capture:true, passive:true });
+            child.addEventListener('load', syncCards, true);
+            cardDocuments.set(frame, { document:child, input:handler });
+        }
+    }
+    const cardEvents = ['pointerdown','touchstart','touchmove','touchend','touchcancel','wheel','keydown','focusin'];
+    const cardLoaded = event => { if (event.target.matches?.('iframe') && root?.contains(event.target)) syncCards(); };
     function navigateReply(node, automatic = false) {
         const targetRoot = doc.getElementById('chat'), context = getContext();
         if (!node?.isConnected || !targetRoot?.contains(node) || typeof context?.scrollChatSurfaceTo !== 'function') return false;
@@ -148,8 +185,10 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
         if (enabled) {
             pinnedReply = false; attach(); remember();
             for (const [name, fn] of listeners) doc.addEventListener(name, fn, { capture:true, passive:true });
+            doc.addEventListener('load', cardLoaded, true);
         } else {
             for (const [name, fn] of listeners) doc.removeEventListener(name, fn, true);
+            doc.removeEventListener('load', cardLoaded, true); syncCards();
             resize?.disconnect(); mutation?.disconnect(); watched.clear();
             win.clearTimeout(idle); if (frame !== null) win.cancelAnimationFrame(frame); frame = null;
             root = state = anchor = editTarget = null; following = touch = browsing = pinnedReply = false; lastIntent = -Infinity; chromeUntil = 0;
