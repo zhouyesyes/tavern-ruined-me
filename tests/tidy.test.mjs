@@ -471,9 +471,10 @@ test('世界书显示保护独立开关保存并立即恢复，可再次开启�
     tidy.destroy();assert.equal(nodes[1].className,'world_entry');dom.window.close();
 });
 
-test('快捷栏拉手状态保存，普通界面刷新保持展开，关闭恢复布局',async()=>{
- const {doc,tidy,c,dom}=setup({quickReplyFold:true,quickReplyOpen:false},'<div id="form_sheld"><form id="send_form"><div id="qr--bar"><button type="button" class="qr--button">原快捷</button></div><textarea>原输入</textarea></form></div>');
- tidy.init();await tick();const input=doc.querySelector('#send_form textarea');doc.getElementById('tvrm-quick-reply-toggle').click();assert.equal(c.extensionSettings[TIDY].quickReplyOpen,true);assert.ok(c.saved>0);tidy.apply();await tick();assert.equal(doc.getElementById('tvrm-quick-reply-toggle').getAttribute('aria-expanded'),'true');assert.equal(input.value,'原输入');
- assert.ok(doc.querySelector('#options .options-content #tvrm-reply-start'));assert.equal(doc.querySelector('#send_form #tvrm-reply-start'),null);
- tidy.settings().quickReplyFold=false;tidy.apply();assert.equal(doc.getElementById('tvrm-quick-reply-toggle'),null);assert.equal(doc.documentElement.classList.contains('tvrm-quick-replies-folded'),false);tidy.destroy();dom.window.close();
+test('快捷栏随输入交互展开，界面刷新不改变临时状态，关闭恢复布局',async()=>{
+ const {doc,tidy,dom}=setup({quickReplyFold:true,quickReplyOpen:true},'<div id="chat"></div><form id="send_form"><div id="qr--bar"><button type="button" class="qr--button">原快捷</button></div><textarea id="send_textarea">原输入</textarea></form>');
+ tidy.init();await tick();const input=doc.getElementById('send_textarea');assert.ok(doc.documentElement.classList.contains('tvrm-quick-replies-folded'));assert.equal(doc.getElementById('tvrm-quick-reply-toggle'),null);
+ input.click();tidy.apply();await tick();assert.equal(doc.documentElement.classList.contains('tvrm-quick-replies-folded'),false);assert.equal(input.value,'原输入');
+ assert.ok(doc.querySelector('#options .options-content #tvrm-reply-start'));
+ tidy.settings().quickReplyFold=false;tidy.apply();assert.equal(doc.documentElement.classList.contains('tvrm-quick-replies-folded'),false);tidy.destroy();dom.window.close();
 });

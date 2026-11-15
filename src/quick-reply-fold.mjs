@@ -1,64 +1,54 @@
-// Fold only the native inline Quick Reply bar. Keep every native button and
-// handler intact, and place the disclosure before the form, never in the textarea row.
-export function createQuickReplyFold(doc, changed = () => {}) {
+// Reveal the native inline Quick Reply bar while using the composer. Preserve
+// native nodes/handlers; visibility is transient and never saved as a preference.
+export function createQuickReplyFold(doc) {
     const win = doc.defaultView, flag = 'tvrm-quick-replies-folded';
-    let active = false, open = false, form = null, handle = null, style = null, observer = null, life = null, queued = false;
+    let active = false, open = false, form = null, style = null, life = null;
     let hadClass = false;
-    function sync() {
-        if (!active || !form?.isConnected) return;
-        const bar = form.querySelector('#qr--bar');
-        if (!bar?.querySelector('.qr--button')) { handle?.remove(); handle = null; return; }
-        if (!handle) {
-            handle = doc.createElement('button'); handle.type = 'button'; handle.id = 'tvrm-quick-reply-toggle';
-            handle.innerHTML = '<svg viewBox="0 0 28 8" aria-hidden="true"><path d="M5 4H23"/></svg>';
-            handle.addEventListener('click', () => { open = !open; paint(); changed(open); });
-        }
-        if (handle.parentElement !== form.parentElement || handle.nextElementSibling !== form) form.before(handle);
-        handle.style.order = win.getComputedStyle(form).order;
-        paint();
-    }
-    function paint() {
+    const editor = target => target?.closest?.('#send_textarea') && form?.contains(target);
+    const inBar = target => target?.closest?.('#qr--bar') && form?.contains(target);
+    function paint(value) {
+        open = value;
         if (doc.documentElement.classList.contains(flag) !== !open) doc.documentElement.classList.toggle(flag, !open);
-        if (handle) { handle.setAttribute('aria-expanded', String(open)); handle.setAttribute('aria-controls', 'qr--bar'); handle.title = open ? '收起快捷回复' : '展开快捷回复'; handle.setAttribute('aria-label', handle.title); }
     }
-    function schedule() {
-        if (!active || queued) return; queued = true;
-        win.queueMicrotask(() => { queued = false; sync(); });
+    function sync() {
+        if (!active) return;
+        const next = doc.getElementById('send_form');
+        if (next !== form) { form = next; paint(false); }
     }
-    function bind(next = doc.getElementById('send_form')) {
-        observer?.disconnect(); form = next;
-        if (form) { observer.observe(form, { childList:true, subtree:true }); sync(); }
-        else { handle?.remove(); handle = null; }
+    function click(event) { if (editor(event.target)) paint(true); }
+    function outside(event) {
+        if (open && !editor(event.target) && !inBar(event.target)) paint(false);
     }
+    function gesture(event) {
+        if (open && !editor(event.target) && !inBar(event.target)) paint(false);
+    }
+    function key(event) {
+        if (event.key === 'Escape') paint(false);
+        else if (editor(event.target) && event.key !== 'Tab') paint(true);
+    }
+    function focus(event) {
+        if (open && !editor(event.target) && !inBar(event.target)) paint(false);
+    }
+    const listeners = [['click',click],['pointerdown',outside],['touchstart',outside],['touchmove',gesture],['wheel',gesture],['keydown',key],['focusin',focus]];
     function start() {
         active = true; hadClass = doc.documentElement.classList.contains(flag);
-        style = doc.createElement('style'); style.textContent = `
-html.${flag} #send_form #qr--bar{display:none!important}
-#tvrm-quick-reply-toggle{display:flex!important;justify-content:center;align-items:center;box-sizing:border-box;flex:0 0 18px;width:100%;height:18px;min-height:18px;max-height:18px;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--sb-bar-accent,var(--SmartThemeBodyColor,currentColor));opacity:.65;box-shadow:none;cursor:pointer;touch-action:manipulation}
-#tvrm-quick-reply-toggle svg{display:block;width:28px;height:8px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;pointer-events:none}
-#tvrm-quick-reply-toggle:focus-visible{outline:1px solid currentColor;outline-offset:-2px;opacity:1}
-`;
-        doc.head.append(style); observer = new win.MutationObserver(schedule);
-        life = new win.MutationObserver(records => {
-            if (form?.isConnected) return;
-            for (const record of records) for (const node of record.addedNodes) {
-                if (node.nodeType !== 1) continue;
-                const next = node.id === 'send_form' ? node : node.querySelector('#send_form');
-                if (next?.isConnected) { bind(next); return; }
-            }
-            if (form) bind(null);
-        });
-        life.observe(doc.body, { childList:true, subtree:true }); bind(); paint();
+        style = doc.createElement('style');
+        style.textContent = `html.${flag} #send_form #qr--bar{display:none!important}`;
+        doc.head.append(style);
+        life = new win.MutationObserver(() => { if (!form?.isConnected) sync(); });
+        life.observe(doc.body, { childList:true, subtree:true });
+        for (const [name, handler] of listeners) doc.addEventListener(name, handler, { capture:true, passive:true });
+        sync(); paint(false);
     }
     function destroy() {
-        if (!active) return; active = false; observer?.disconnect(); life?.disconnect(); handle?.remove(); handle = null; style?.remove(); form = null;
+        if (!active) return;
+        active = false; life?.disconnect(); style?.remove(); form = null; open = false;
+        for (const [name, handler] of listeners) doc.removeEventListener(name, handler, true);
         doc.documentElement.classList.toggle(flag, hadClass);
     }
     function apply(options = {}) {
-        open = options.open === true;
         if (options.enabled === false) { destroy(); return; }
         if (!active) start(); else sync();
-        paint();
     }
     return { apply, sync, destroy };
 }

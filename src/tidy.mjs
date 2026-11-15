@@ -40,13 +40,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true, replyStartButton:true, replyStartAuto:false, quickReplyFold:true, quickReplyOpen:false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true, replyStartButton:true, replyStartAuto:false, quickReplyFold:true,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix', 'replyStartButton', 'replyStartAuto', 'quickReplyFold', 'quickReplyOpen']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix', 'replyStartButton', 'replyStartAuto', 'quickReplyFold']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -140,7 +140,7 @@ export function createTidy(host) {
     const chatProbe = createChatJumpProbe(doc, () => ({ ...host.chatPreferences?.(), chatStability:S().chatStability }), () => rerender?.());
     const chatStability = createChatStability(doc, ctx, host.chatPreferences, details => chatProbe.noteState(details));
     const replyNavigation = createReplyNavigation(doc, ctx, chatStability.navigateReply, chatStability.releaseReply, (kind, message) => toast(kind, message));
-    const quickReplyFold = createQuickReplyFold(doc, open => { S().quickReplyOpen = open; save(); rerender?.(); });
+    const quickReplyFold = createQuickReplyFold(doc);
     let edgeMessage = '';
     const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } }, host.resumeBackdrop);
 
@@ -415,7 +415,7 @@ export function createTidy(host) {
         edgeColor.apply(S().edgeColor, S().edgeGradientColor);
         chatStability.apply(S().chatStability);
         replyNavigation.apply({ button:S().replyStartButton, auto:S().replyStartAuto });
-        quickReplyFold.apply({ enabled:S().quickReplyFold, open:S().quickReplyOpen });
+        quickReplyFold.apply({ enabled:S().quickReplyFold });
         if (S().worldDuplicateFix) worldDisplay.start(); else worldDisplay.destroy();
         pause();
         undoAll();
@@ -656,8 +656,8 @@ export function createTidy(host) {
             check('API 回复完成后自动跳到开头', st.replyStartAuto, value => change(x => { x.replyStartAuto = value; }), '默认关闭；只在本聊天确实收到助手回复并结束生成后执行，不在打开菜单、进入历史聊天或生成中断时执行。'),
             h('div', { class:'tvrm-actions' }, btn('跳到最新回复开头', () => replyNavigation.jump()))));
 
-        kids.push(part('quickReplyFold', '快捷回复栏收放', st.quickReplyFold ? (st.quickReplyOpen ? '已展开' : '已收起') : '使用原布局',
-            check('启用分界处小拉手', st.quickReplyFold, value => change(x => { x.quickReplyFold = value; }), '聊天区与输入栏之间只留一条短线，点一下展开快捷回复，再点收起；不占输入文字宽度。'),
+        kids.push(part('quickReplyFold', '快捷回复栏收放', st.quickReplyFold ? '随输入自动收放' : '使用原布局',
+            check('点输入框展开快捷回复', st.quickReplyFold, value => change(x => { x.quickReplyFold = value; }), '点输入框时展开，滑动聊天或点到其他地方时收起；操作快捷按钮不会提前收起。'),
             h('p', { class:'tvrm-note' }, '展开状态自动记住。只折叠原生内嵌快捷栏，不改快捷回复内容和自动执行设置；关闭此选项恢复原布局。')));
 
         kids.push(part('chatJumpProbe', '聊天跳动检测', chatProbe.running ? '正在记录 · 60 秒后停止' : '记录定位命令与消息高度变化',
