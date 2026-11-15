@@ -16,14 +16,18 @@ export function createReplyNavigation(doc, getContext, navigate, release, toast 
         return true;
     }
     function syncButton() {
-        const form = doc.getElementById('send_form');
-        if (!showButton || !form || disposed) { button?.remove(); button = null; return; }
-        if (button?.parentElement === form) return;
-        button?.remove(); button = doc.createElement('button'); button.type = 'button'; button.id = 'tvrm-reply-start';
-        button.className = 'menu_button tvrm-reply-start'; button.textContent = '↟'; button.title = '跳到最新回复开头'; button.setAttribute('aria-label', button.title);
-        button.style.cssText = 'flex:0 0 28px;width:28px;min-width:28px;max-width:28px;padding:2px;margin:2px;align-self:center;font-size:20px;line-height:1.2';
-        button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); cancel(); jump(); });
-        const send = doc.getElementById('send_but'); form.insertBefore(button, send?.parentElement === form ? send : null);
+        const menu = doc.querySelector('#options .options-content') || doc.querySelector('.options-content') || doc.getElementById('options');
+        if (!showButton || !menu || !doc.getElementById('send_form') || disposed) { button?.remove(); button = null; return; }
+        if (button?.parentElement === menu) return;
+        button?.remove(); button = doc.createElement('a'); button.id = 'tvrm-reply-start';
+        button.className = 'list-group-item tvrm-reply-start'; button.setAttribute('role','button'); button.tabIndex = 0;
+        button.title = '跳到最新回复开头'; button.setAttribute('aria-label', button.title);
+        const icon = doc.createElement('i'); icon.className = 'fa-solid fa-arrow-up'; icon.setAttribute('aria-hidden','true');
+        const label = doc.createElement('span'); label.textContent = '最新回复开头'; button.append(icon,label);
+        const activate = event => { event.preventDefault(); event.stopPropagation(); cancel(); jump(); };
+        button.addEventListener('click', activate);
+        button.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') activate(event); });
+        menu.append(button);
     }
     function apply(options = {}) { showButton = options.button !== false; auto = options.auto === true; if (!auto) cancel(); syncButton(); }
     function started(type, options, dryRun) {

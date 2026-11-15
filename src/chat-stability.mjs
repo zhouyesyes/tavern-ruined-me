@@ -99,7 +99,7 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
     };
     const input = event => {
         if (!enabled) return;
-        const menu = event.target.closest?.('#options_button,#options,.options-content,#extensionsMenuButton,#extensionsMenu,#top-settings-holder,#top-bar');
+        const menu = event.target.closest?.('#options_button,#options,.options-content,#tvrm-quick-reply-toggle,#extensionsMenuButton,#extensionsMenu,#top-settings-holder,#top-bar');
         if (menu || (event.type === 'keydown' && event.key === 'Escape' && win.performance.now() < chromeUntil)) {
             // Opening/closing chrome is not a request to move the conversation.
             chromeUntil = win.performance.now() + 2000;

@@ -273,7 +273,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 9);
+    assert.equal(groups.length, 10);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
@@ -449,4 +449,11 @@ test('世界书显示保护独立开关保存并立即恢复，可再次开启�
     assert.equal(c.extensionSettings[TIDY].worldDuplicateFix,true);assert.ok(nodes[1].classList.contains('tvrm-world-duplicate'));
     assert.equal(doc.querySelectorAll('.world_entry')[0],nodes[0]);assert.equal(nodes[1].querySelector('textarea').value,'同条目');
     tidy.destroy();assert.equal(nodes[1].className,'world_entry');dom.window.close();
+});
+
+test('快捷栏拉手状态保存，普通界面刷新保持展开，关闭恢复布局',async()=>{
+ const {doc,tidy,c,dom}=setup({quickReplyFold:true,quickReplyOpen:false},'<div id="form_sheld"><form id="send_form"><div id="qr--bar"><button type="button" class="qr--button">原快捷</button></div><textarea>原输入</textarea></form></div>');
+ tidy.init();await tick();const input=doc.querySelector('#send_form textarea');doc.getElementById('tvrm-quick-reply-toggle').click();assert.equal(c.extensionSettings[TIDY].quickReplyOpen,true);assert.ok(c.saved>0);tidy.apply();await tick();assert.equal(doc.getElementById('tvrm-quick-reply-toggle').getAttribute('aria-expanded'),'true');assert.equal(input.value,'原输入');
+ assert.ok(doc.querySelector('#options .options-content #tvrm-reply-start'));assert.equal(doc.querySelector('#send_form #tvrm-reply-start'),null);
+ tidy.settings().quickReplyFold=false;tidy.apply();assert.equal(doc.getElementById('tvrm-quick-reply-toggle'),null);assert.equal(doc.documentElement.classList.contains('tvrm-quick-replies-folded'),false);tidy.destroy();dom.window.close();
 });
