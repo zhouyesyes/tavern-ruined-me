@@ -1,3 +1,4 @@
+import { createWorldDisplayGuard } from './world-display-guard.mjs';
 // 酒馆接口由 host 传入；聊天切换、原书修改共用队列，避免异步结果串窗。
 import {
     NS, BUCKET, normalizeSettings, newBookCfg, newGroupId, bucketOf,
@@ -678,8 +679,9 @@ export function createApp(host) {
         watchedList = doc.getElementById('world_popup_entries_list');
         doc.addEventListener('change', e => { if (e.target.id === 'world_editor_select') scheduleNative(); });
     }
+    const worldDisplay = createWorldDisplayGuard(doc);
     function init() {
-        settings(); mountPanel(); watchNative();
+        settings(); mountPanel(); watchNative(); worldDisplay.start();
         return onChatChanged();
     }
     return { init, onChatChanged, onChatCreated, onChatDeleted, forgetWorld, onWorldChanged, onEntriesLoaded, settings, mountPanel, flushWriteBack, scheduleWriteBack, syncNative, renderPanel, whenIdle: () => queue };
