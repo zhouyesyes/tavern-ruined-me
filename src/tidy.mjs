@@ -140,7 +140,7 @@ export function createTidy(host) {
     const worldDisplay = createWorldDisplayGuard(doc);
     const chatProbe = createChatJumpProbe(doc, () => ({ ...host.chatPreferences?.(), chatStability:S().chatStability }), () => rerender?.());
     const chatStability = createChatStability(doc, ctx, host.chatPreferences, details => chatProbe.noteState(details));
-    const pageRefresh = createPageRefresh(doc, host.reloadPage);
+    const pageRefresh = createPageRefresh(doc, host.reloadChat || (async () => { const reload = ctx().reloadCurrentChat; if (typeof reload !== 'function') throw new Error('当前环境未提供聊天刷新接口'); await reload(); }), ctx, toast);
     const replyNavigation = createReplyNavigation(doc, ctx, chatStability.navigateReply, chatStability.releaseReply, (kind, message) => toast(kind, message));
     const quickReplyFold = createQuickReplyFold(doc);
     let edgeMessage = '';
@@ -605,8 +605,8 @@ export function createTidy(host) {
             check('API 回复完成后自动跳到开头', st.replyStartAuto, value => change(x => { x.replyStartAuto = value; }), '默认关闭；只在本聊天确实收到助手回复并结束生成后执行，不在打开菜单、进入历史聊天或生成中断时执行。'),
             h('div', { class:'tvrm-actions' }, btn('跳到最新回复开头', () => replyNavigation.jump()))));
 
-        kids.push(part('pageRefresh', '页面刷新', st.pageRefresh ? '显示在 ☰ 菜单' : '已隐藏',
-            check('在 ☰ 菜单显示「刷新页面」', st.pageRefresh, value => change(x => { x.pageRefresh = value; }), '重新加载当前酒馆页面。未保存的页面操作可能丢失。')));
+        kids.push(part('pageRefresh', '聊天刷新', st.pageRefresh ? '显示在 ☰ 菜单' : '已隐藏',
+            check('在 ☰ 菜单显示「刷新当前聊天」', st.pageRefresh, value => change(x => { x.pageRefresh = value; }), '只重新载入当前聊天，不重载酒馆页面；回复生成中不执行。')));
 
         kids.push(part('quickReplyFold', '快捷回复栏收放', st.quickReplyFold ? '随输入自动收放' : '使用原布局',
             check('点输入框展开快捷回复', st.quickReplyFold, value => change(x => { x.quickReplyFold = value; }), '点输入框时展开，滑动聊天或点到其他地方时收起；操作快捷按钮不会提前收起。'),

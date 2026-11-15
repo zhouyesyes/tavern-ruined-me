@@ -1,5 +1,6 @@
 // 酒馆你害我不浅 —— 入口。四格：世界书 / 预设 / API 共用「跟着聊天走」；界面格整理酒馆界面。
 import { eventSource, event_types } from '../../../../script.js';
+import * as chatHost from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
 import { world_names, selected_world_info, world_info, loadWorldInfo, saveWorldInfo } from '../../../world-info.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
@@ -129,6 +130,11 @@ const nativeEdge = createNativeEdge(document, () => getContext().getRequestHeade
     installWindowBackdrop({ safeInvoke: guard });
 });
 const tidy = createTidy({
+    reloadChat: async () => {
+        if (chatHost.isGenerating?.()) throw new Error('请等回复结束后再刷新聊天');
+        if (typeof chatHost.reloadCurrentChat !== 'function') throw new Error('当前环境未提供聊天刷新接口');
+        await chatHost.reloadCurrentChat();
+    },
     publishBackdrop: nativeEdge.apply,
     resumeBackdrop: nativeEdge.replay,
     chatPreferences: () => ({ autoBottom:powerUser.power_user?.auto_scroll_chat_to_bottom ?? null, visualNovel:powerUser.power_user?.waifuMode ?? null, historyBatch:powerUser.power_user?.chat_truncation ?? null }),
