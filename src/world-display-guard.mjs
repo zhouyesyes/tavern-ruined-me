@@ -74,6 +74,7 @@ export function createWorldDisplayGuard(doc) {
         bind();
     }
     function destroy() {
+        if (!active) return;
         active = false; observer?.disconnect(); life?.disconnect();
         for (const name of ['input','change','click']) doc.removeEventListener(name, event, true);
         for (const row of hidden) row.classList.remove(marker);

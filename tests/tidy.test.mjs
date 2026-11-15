@@ -273,7 +273,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 7);
+    assert.equal(groups.length, 8);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
@@ -433,4 +433,20 @@ test('渐变选色保存、重新打开保留，恢复跟随主题不改变模�
     assert.equal(c.extensionSettings[TIDY].edgeGradientColor, null);
     assert.equal(c.extensionSettings[TIDY].edgeColor, 'soft');
     tidy.destroy(); dom.window.close();
+});
+
+
+test('世界书显示保护独立开关保存并立即恢复，可再次开启且备注不宣称TT独有', async () => {
+    const { doc, tidy, c, dom } = setup({ on:false, worldDuplicateFix:true }, '<div id="world_popup_entries_list"><div class="world_entry" uid="1"><textarea name="comment">同条目</textarea></div><div class="world_entry" uid="1"><textarea name="comment">同条目</textarea></div></div>');
+    const nodes=[...doc.querySelectorAll('.world_entry')]; tidy.init(); await tick();
+    assert.ok(nodes[1].classList.contains('tvrm-world-duplicate'));
+    const panel=doc.createElement('div');doc.body.append(panel);tidy.render(panel);
+    assert.match(panel.textContent,/TT 2.4.0/);assert.match(panel.textContent,/不能认定为 TT 独有/);
+    const toggle=()=>[...panel.querySelectorAll('label')].find(x=>x.textContent.startsWith('启用世界书重复显示保护')).querySelector('input');
+    let input=toggle();input.checked=false;input.dispatchEvent(new dom.window.Event('change'));await tick();
+    assert.equal(c.extensionSettings[TIDY].worldDuplicateFix,false);assert.equal(nodes[1].classList.contains('tvrm-world-duplicate'),false);
+    input=toggle();input.checked=true;input.dispatchEvent(new dom.window.Event('change'));await tick();
+    assert.equal(c.extensionSettings[TIDY].worldDuplicateFix,true);assert.ok(nodes[1].classList.contains('tvrm-world-duplicate'));
+    assert.equal(doc.querySelectorAll('.world_entry')[0],nodes[0]);assert.equal(nodes[1].querySelector('textarea').value,'同条目');
+    tidy.destroy();assert.equal(nodes[1].className,'world_entry');dom.window.close();
 });

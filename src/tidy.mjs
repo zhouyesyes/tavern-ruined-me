@@ -1,3 +1,4 @@
+import { createWorldDisplayGuard } from './world-display-guard.mjs';
 import { createChatStability } from './chat-stability.mjs';
 import { createEdgeColor } from './edge-color.mjs';
 import { createChatJumpProbe } from './chat-jump-probe.mjs';
@@ -37,13 +38,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -128,6 +129,7 @@ export function createTidy(host) {
     let rerender = null; let dead = false; let queued = false; let frame = null;
     let style = null;
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
+    const worldDisplay = createWorldDisplayGuard(doc);
     const chatProbe = createChatJumpProbe(doc, host.chatPreferences, () => rerender?.());
     const chatStability = createChatStability(doc, ctx, host.chatPreferences);
     let edgeMessage = '';
@@ -402,6 +404,7 @@ export function createTidy(host) {
         if (dead) return;
         edgeColor.apply(S().edgeColor, S().edgeGradientColor);
         chatStability.apply(S().chatStability);
+        if (S().worldDuplicateFix) worldDisplay.start(); else worldDisplay.destroy();
         pause();
         undoAll();
         if (S().on && !yantaiOn()) {
@@ -618,6 +621,11 @@ export function createTidy(host) {
                 btn('复制检测结果', async () => { scrollProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(scrollProbe.report()); toast('success', '检测结果已复制'); } catch { toast('warning', '请在下方框内长按复制检测结果'); } })),
             h('textarea', { class: 'text_pole', readonly: true, rows: 5 }, scrollProbe.report())));
 
+        kids.push(part('worldDuplicateFix', '世界书重复显示保护', st.worldDuplicateFix ? '已开启' : '已关闭',
+            check('启用世界书重复显示保护', st.worldDuplicateFix, value => change(x => { x.worldDuplicateFix = value; }), '用于数量正确、同一条目的卡片却重复出现的情况；仅隐藏 UID 和字段相同的显示副本，不删除世界书数据。'),
+            h('p', { class:'tvrm-note' }, '已在 TT 2.4.0 复现异步刷新导致的重复显示；其他酒馆前端是否相同尚未验证，不能认定为 TT 独有。没有此问题可关闭。'),
+            h('p', { class:'tvrm-note' }, '独立于界面整理。关闭后立即恢复原列表显示，并停止这项保护的监听。')));
+
         kids.push(part('chatStability', '聊天定位稳定（试验）', st.chatStability ? '已开启' : '未开启',
             check('保持聊天阅读位置', st.chatStability, value => change(x => { x.chatStability = value; }), '延后加载导致消息变高时：原本在末尾则维持末尾，往上阅读则保留当前段落；滑动中不校正。'),
             h('p', { class:'tvrm-note' }, '仅对提供原生滚动接口的静态消息列表生效；TT 虚拟滚动仍由宿主管理。默认关闭，可随时关闭恢复。')));
@@ -648,5 +656,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }
