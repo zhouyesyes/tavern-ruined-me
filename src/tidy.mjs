@@ -1,4 +1,5 @@
 import { createEdgeColor } from './edge-color.mjs';
+import { createChatJumpProbe } from './chat-jump-probe.mjs';
 import { createScrollProbe } from './scrollProbe.mjs';
 // 界面格：把酒馆里不常用的按钮和设置收起来（照「砚台 · 界面整理」的功能自己重写，没有复制它的代码）。
 // 只加 / 去掉咱们自己的 class、自己插的折叠头，和扩展页上记得住原值的几条行内样式；关掉或「恢复原界面」就全部还原。
@@ -126,6 +127,7 @@ export function createTidy(host) {
     let rerender = null; let dead = false; let queued = false; let frame = null;
     let style = null;
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
+    const chatProbe = createChatJumpProbe(doc, host.chatPreferences, () => rerender?.());
     let edgeMessage = '';
     const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } }, host.resumeBackdrop);
 
@@ -439,6 +441,7 @@ export function createTidy(host) {
         }, true);
         doc.addEventListener('click', e => { if (e.target.closest?.('#extensionsMenuButton,#extensions-settings-button > .drawer-toggle,#user-settings-button > .drawer-toggle,#options_button')) schedule(); }, true);
         host.on?.('APP_READY', schedule);
+        host.on?.('CHAT_CHANGED', chatProbe.chatChanged);
         doc.defaultView.addEventListener('focus', syncNativeFullscreen);
         syncNativeFullscreen();
         doc.addEventListener('fullscreenchange', fullscreenChanged);
@@ -611,6 +614,12 @@ export function createTidy(host) {
                 btn('复制检测结果', async () => { scrollProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(scrollProbe.report()); toast('success', '检测结果已复制'); } catch { toast('warning', '请在下方框内长按复制检测结果'); } })),
             h('textarea', { class: 'text_pole', readonly: true, rows: 5 }, scrollProbe.report())));
 
+        kids.push(part('chatJumpProbe', '聊天跳动检测', chatProbe.running ? '正在记录 · 60 秒后停止' : '记录定位命令与消息高度变化',
+            h('p', { class: 'tvrm-note' }, '先开始记录，再重新进入会跳的聊天并往上翻；回来停止并复制结果。只记录位置、楼层编号和调用函数名，不读取正文，不改变滚动位置。'),
+            h('div', { class: 'tvrm-actions' }, btn(chatProbe.running ? '停止记录聊天跳动' : '开始记录聊天跳动', () => chatProbe.running ? chatProbe.stop() : chatProbe.start()),
+                btn('复制聊天跳动记录', async () => { chatProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(chatProbe.report()); toast('success', '聊天跳动记录已复制'); } catch { toast('warning', '请在下方框内长按复制记录'); } })),
+            h('textarea', { class: 'text_pole', readonly:true, rows:7 }, chatProbe.report())));
+
         kids.push(part('edgeColor', '边缘颜色', { off: '关闭 · 使用原壁纸', dark: '统一颜色 · 自动取样', soft: '柔和渐变' }[st.edgeColor],
             h('div', { class: 'tvrm-actions' }, [['off', '关闭'], ['dark', '统一颜色'], ['soft', '柔和渐变']].map(([value, label]) =>
                 h('button', { type: 'button', class: 'menu_button', 'aria-pressed': st.edgeColor === value ? 'true' : 'false', onclick: () => change(x => { x.edgeColor = value; }) }, label))),
@@ -631,5 +640,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }

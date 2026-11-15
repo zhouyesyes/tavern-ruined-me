@@ -12,6 +12,7 @@ import { createNativeEdge } from './src/native-edge.mjs';
 // 整个模块一起导入，按名字去取：酒馆旧一点、少导出一个名字时，插件照样能加载（逐个 import 少一个就整个插件加载失败、从扩展列表里消失）
 import * as oai from '../../../openai.js';
 import * as secrets from '../../../secrets.js';
+import * as powerUser from '../../../power-user.js';
 import { collectNativeApis } from './src/nativeApis.mjs';
 
 // 预设格接到酒馆（聊天补全预设）。照酒馆自己 openai.js / PromptManager.js 的做法：
@@ -130,6 +131,7 @@ const nativeEdge = createNativeEdge(document, () => getContext().getRequestHeade
 const tidy = createTidy({
     publishBackdrop: nativeEdge.apply,
     resumeBackdrop: nativeEdge.replay,
+    chatPreferences: () => ({ autoBottom:powerUser.power_user?.auto_scroll_chat_to_bottom ?? null, visualNovel:powerUser.power_user?.waifuMode ?? null, historyBatch:powerUser.power_user?.chat_truncation ?? null }),
     document,
     getContext,
     toast: (kind, msg) => globalThis.toastr?.[kind]?.(msg),
