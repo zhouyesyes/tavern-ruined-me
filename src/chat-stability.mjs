@@ -1,15 +1,16 @@
 // Preserve static-chat geometry through late media/layout changes. All position
 // writes use the host's scroll API; bounded ChatSurface retains full ownership.
-export function createChatStability(doc, getContext, preferences = () => ({})) {
+export function createChatStability(doc, getContext, preferences = () => ({}), trace = () => {}) {
     const win = doc.defaultView;
     let enabled = false, root = null, resize = null, mutation = null, watched = new Set();
     let state = null, anchor = null, following = false, frame = null, idle = null, touch = false, browsing = false;
+    let lastIntent = -Infinity, editTarget = null;
     const measure = () => root ? { top:root.scrollTop, height:root.scrollHeight, view:root.clientHeight } : null;
     const atEnd = value => value && value.height - value.view - value.top < 24;
     const supported = () => enabled && root?.isConnected && root.getAttribute('data-tt-chat-surface') !== 'bounded'
         && typeof getContext()?.scrollChatSurfaceTo === 'function';
     const autoBottom = () => preferences()?.autoBottom !== false;
-    const editing = () => root?.contains(doc.activeElement) && doc.activeElement.matches('input,textarea,[contenteditable=true]');
+    const editing = () => editTarget && doc.activeElement === editTarget && root?.contains(editTarget);
     function pickAnchor() {
         if (!root || !root.clientHeight) return null;
         const top = root.getBoundingClientRect().top + root.clientTop, bottom = top + root.clientHeight;
@@ -37,9 +38,10 @@ export function createChatStability(doc, getContext, preferences = () => ({})) {
         if (!supported()) return;
         const current = measure();
         if (!state) { remember(); return; }
-        if (browsing || touch || editing()) { state = current; anchor = pickAnchor(); return; }
+        if (browsing || touch || editing()) { trace({ action:'让出用户操作', following, touch, browsing, editing:!!editing() }); state = current; anchor = pickAnchor(); return; }
         const changed = Math.abs(current.height - state.height) > 1 || Math.abs(current.view - state.view) > 1;
-        if (!changed) return;
+        const tailDrift = following && autoBottom() && !atEnd(current);
+        if (!changed && !tailDrift) return;
         let target = null;
         if (following && autoBottom()) target = current.height - current.view;
         else if (anchor?.node.isConnected && root.contains(anchor.node)) {
@@ -48,7 +50,10 @@ export function createChatStability(doc, getContext, preferences = () => ({})) {
         }
         if (target !== null) {
             target = Math.max(0, Math.min(current.height - current.view, target));
-            if (Math.abs(target - current.top) > 1) getContext().scrollChatSurfaceTo({ top:target, behavior:'instant' });
+            if (Math.abs(target - current.top) > 1) {
+                trace({ action:following ? '维持末尾' : '维持段落', from:current.top, to:target, height:current.height, following, changed, tailDrift });
+                getContext().scrollChatSurfaceTo({ top:target, behavior:'instant' });
+            }
         }
         // Preserve the existing follow/reading intent; a layout shift is not user input.
         state = measure(); if (!following) anchor = pickAnchor();
@@ -76,20 +81,32 @@ export function createChatStability(doc, getContext, preferences = () => ({})) {
     function chatChanged() {
         if (!enabled) return;
         if (frame !== null) win.cancelAnimationFrame(frame); frame = null;
-        win.clearTimeout(idle); const activeTouch = touch; attach(); browsing = touch = activeTouch; remember(); if (activeTouch) following = false; schedule();
+        win.clearTimeout(idle); editTarget = null; lastIntent = -Infinity; const activeTouch = touch; attach(); browsing = touch = activeTouch; remember(); if (activeTouch) following = false; schedule();
     }
     const scroll = event => {
         if (event.target !== root || !supported()) return;
         if (browsing || touch) { state = measure(); anchor = pickAnchor(); settle(); return; }
         const current = measure();
-        // Capture deliberate host navigation only when the geometry itself stayed stable.
+        // A scroll event alone is not evidence of user navigation. WebKit/frame
+        // focus may move the parent before ResizeObserver reports any height change.
+        if (following && autoBottom() && !atEnd(current)) { schedule(); return; }
         if (state && Math.abs(current.height - state.height) <= 1 && Math.abs(current.view - state.view) <= 1) {
-            state = current; following = !!(autoBottom() && atEnd(current));
+            state = current;
+            if (autoBottom() && atEnd(current)) following = true;
             anchor = following ? null : pickAnchor();
         }
     };
     const input = event => {
         if (!enabled) return;
+        const isEditable = event.target.matches?.('input,textarea,[contenteditable=true]');
+        if (event.type === 'focusin') {
+            // Programmatic autofocus is trusted too; require preceding user intent.
+            if (win.performance.now() - lastIntent > 1000) { trace({ action:'忽略自动焦点', tag:event.target.tagName, following }); return; }
+            editTarget = isEditable && root?.contains(event.target) ? event.target : null;
+            return;
+        }
+        lastIntent = win.performance.now();
+        if (event.type === 'pointerdown' || event.type === 'keydown') editTarget = isEditable && root?.contains(event.target) ? event.target : null;
         if (root?.contains(event.target)) {
             browsing = true; following = false;
             if (event.type === 'touchstart' || event.type === 'touchmove') touch = true;
@@ -97,6 +114,7 @@ export function createChatStability(doc, getContext, preferences = () => ({})) {
             state = measure(); anchor = pickAnchor(); settle();
         } else if (event.type !== 'touchend' && event.type !== 'touchcancel') {
             // Searching/jumping/editing via other controls is an explicit navigation intent.
+            trace({ action:'明确导航', event:event.type, following });
             following = false; anchor = null; state = measure();
         }
     };
@@ -111,7 +129,7 @@ export function createChatStability(doc, getContext, preferences = () => ({})) {
             for (const [name, fn] of listeners) doc.removeEventListener(name, fn, true);
             resize?.disconnect(); mutation?.disconnect(); watched.clear();
             win.clearTimeout(idle); if (frame !== null) win.cancelAnimationFrame(frame); frame = null;
-            root = state = anchor = null; following = touch = browsing = false;
+            root = state = anchor = editTarget = null; following = touch = browsing = false; lastIntent = -Infinity;
         }
     }
     return { apply, chatChanged, destroy() { apply(false); } };

@@ -107,9 +107,10 @@ export function createChatJumpProbe(doc, preferences = () => ({}), changed = () 
         frame = win.requestAnimationFrame ? win.requestAnimationFrame(run) : win.setTimeout(run, 0);
     };
     const media = event => { if (event.target.closest?.('#chat') && event.target.matches('img,video,audio,iframe')) log('媒体加载', { tag:event.target.tagName, message:event.target.closest('.mes')?.getAttribute('mesid') ?? null, ...geometry() }); };
+    const focus = event => log('焦点变化', { tag:event.target.tagName || null, inChat:!!root?.contains(event.target), editable:!!event.target.matches?.('input,textarea,[contenteditable=true]'), ...geometry() });
     const fonts = () => log('字体加载完成', geometry());
     const viewport = () => log('视口变化', { width:win.innerWidth, visualHeight:win.visualViewport?.height ?? win.innerHeight, ...geometry() });
-    const listeners = [['touchstart',input],['touchmove',input],['touchend',input],['wheel',input],['pointerdown',input],['scroll',scroll],['load',media],['loadeddata',media]];
+    const listeners = [['touchstart',input],['touchmove',input],['touchend',input],['wheel',input],['pointerdown',input],['scroll',scroll],['load',media],['loadeddata',media],['focusin',focus]];
     function stop(notify = true) {
         if (!running) return;
         log('停止', geometry()); running = false;
@@ -130,5 +131,5 @@ export function createChatJumpProbe(doc, preferences = () => ({}), changed = () 
     }
     function chatChanged() { if (running) { epoch++; attach(); log('聊天切换', geometry()); } }
     function report() { return ['聊天跳动检测（仅内存，最多60秒）', '不读取正文、角色名、图片地址；scroll命令原样转发，不校正位置。', `记录 ${rows.length} 条，丢弃较早记录 ${dropped} 条。`, ...rows.map(row => JSON.stringify(row))].join('\n'); }
-    return { start, stop, chatChanged, report, get running() { return running; }, destroy() { stop(false); } };
+    return { start, stop, chatChanged, report, noteState(details) { log('定位稳定状态', details); }, get running() { return running; }, destroy() { stop(false); } };
 }

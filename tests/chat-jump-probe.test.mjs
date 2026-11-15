@@ -26,3 +26,10 @@ test('触摸不会被取消，销毁后不再收集', () => {
  const event=new dom.window.Event('touchstart',{bubbles:true,cancelable:true});root.dispatchEvent(event);assert.equal(event.defaultPrevented,false);assert.match(probe.report(),/touchstart/);
  probe.destroy();assert.equal(probe.running,false);dom.window.close();
 });
+
+test('补偿状态与焦点只在记录期间收集，报告不含输入正文',()=>{
+ const dom=page(),doc=dom.window.document,root=doc.getElementById('chat');const input=doc.createElement('textarea');input.value='PRIVATE_FOCUS_CONTENT';root.append(input);
+ const probe=createChatJumpProbe(doc);probe.noteState({action:'不应记录'});probe.start();probe.noteState({action:'维持末尾',from:8514,to:13587,following:true});input.focus();
+ assert.match(probe.report(),/定位稳定状态/);assert.match(probe.report(),/焦点变化/);assert.doesNotMatch(probe.report(),/PRIVATE_FOCUS_CONTENT|不应记录/);
+ probe.stop();const before=probe.report();probe.noteState({action:'停止后'});assert.equal(probe.report(),before);dom.window.close();
+});

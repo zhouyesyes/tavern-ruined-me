@@ -130,8 +130,8 @@ export function createTidy(host) {
     let style = null;
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
     const worldDisplay = createWorldDisplayGuard(doc);
-    const chatProbe = createChatJumpProbe(doc, host.chatPreferences, () => rerender?.());
-    const chatStability = createChatStability(doc, ctx, host.chatPreferences);
+    const chatProbe = createChatJumpProbe(doc, () => ({ ...host.chatPreferences?.(), chatStability:S().chatStability }), () => rerender?.());
+    const chatStability = createChatStability(doc, ctx, host.chatPreferences, details => chatProbe.noteState(details));
     let edgeMessage = '';
     const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } }, host.resumeBackdrop);
 
