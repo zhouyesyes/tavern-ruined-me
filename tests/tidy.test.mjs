@@ -293,7 +293,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     const { doc, tidy } = setup(); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
     const groups = [...panel.children];
-    assert.equal(groups.length, 10);
+    assert.equal(groups.length, 9);
     const group = groups[0];
     assert.equal(group.open, false);
     assert.deepEqual([...group.querySelectorAll(':scope > .tvrm-card-body > details > summary b')].map(x => x.textContent), ['顶栏', '选项菜单', '扩展菜单', '扩展程序页', '用户设置']);
@@ -315,43 +315,6 @@ test('总开关和恢复原界面只管前五项，独立功能不受砚台影�
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const button = (box, text) => [...box.querySelectorAll('button')].find(x => x.textContent === text);
-test('页面全屏：进入、系统退出同步、再次进入和退出，不依赖整理开关', async () => {
-    const { doc, tidy } = setup();
-    let current = null;
-    Object.defineProperty(doc, 'fullscreenElement', { get: () => current });
-    const sync = () => doc.dispatchEvent(new doc.defaultView.Event('fullscreenchange'));
-    doc.documentElement.requestFullscreen = async () => { current = doc.documentElement; sync(); };
-    doc.exitFullscreen = async () => { current = null; sync(); };
-    tidy.init(); const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
-    button(panel, '进入全屏').click(); await tick();
-    assert.equal(current, doc.documentElement); assert.ok(button(panel, '退出全屏'));
-    current = null; sync(); assert.ok(button(panel, '进入全屏'));
-    button(panel, '进入全屏').click(); await tick();
-    button(panel, '退出全屏').click(); await tick();
-    assert.equal(current, null); assert.equal(tidy.settings().on, false);
-    tidy.destroy();
-});
-
-test('页面全屏：不支持或请求被拒绝时明确提示，可以重试', async () => {
-    const { doc, tidy, toasts } = setup(); tidy.init();
-    const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
-    button(panel, '进入全屏').click(); await tick();
-    assert.match(toasts.at(-1), /未提供页面全屏接口/);
-    doc.documentElement.requestFullscreen = async () => { throw new Error('denied'); };
-    button(panel, '进入全屏').click(); await tick();
-    assert.match(toasts.at(-1), /denied/); assert.ok(button(panel, '进入全屏'));
-    tidy.destroy();
-});
-
-test('页面全屏：Tauri 窗口接口进入和退出', async () => {
-    const { doc, tidy } = setup(); let full = false;
-    doc.defaultView.__TAURI__ = { window: { getCurrentWindow: () => ({ isFullscreen: async () => full, setFullscreen: async v => { full = v; } }) } };
-    tidy.init(); const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
-    button(panel, '进入全屏').click(); await tick(); assert.equal(full, true);
-    button(panel, '退出全屏').click(); await tick(); assert.equal(full, false);
-    tidy.destroy();
-});
-
 test('关掉整理后不监听动态菜单，也不会因菜单点击重绘设置', async () => {
     const { doc, tidy } = setup({ on: false }); tidy.init();
     const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
@@ -393,18 +356,6 @@ test('设置搜索只在开始和清空时整理，连续输入不反复拆建�
     tidy.destroy();
 });
 
-
-test('TT iPhone 即使暴露桌面窗口接口也直接请求元素全屏', async () => {
-    const { doc, tidy } = setup(); let requests = 0; let nativeCalls = 0;
-    Object.defineProperty(doc.defaultView.navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X)' });
-    doc.defaultView.__TAURI__ = { window: { getCurrentWindow: () => { nativeCalls++; throw new Error('Plugin window not initialized'); } } };
-    doc.documentElement.requestFullscreen = () => { requests++; return Promise.resolve(); };
-    tidy.init(); const panel = doc.createElement('div'); doc.body.append(panel); tidy.render(panel);
-    button(panel, '进入全屏').click();
-    assert.equal(requests, 1, '点击事件内同步发起全屏，保留用户激活');
-    await tick(); assert.equal(nativeCalls, 0);
-    tidy.destroy();
-});
 
 test('后加载的扩展始终在收起栏前面，关闭整理后不留下末尾盒子', async () => {
     const { doc, tidy } = setup({ on: true }); tidy.init();

@@ -470,10 +470,6 @@ export function createTidy(host) {
         host.on?.('CHARACTER_MESSAGE_RENDERED', replyNavigation.syncButton);
         host.on?.('GENERATION_ENDED', replyNavigation.ended);
         host.on?.('GENERATION_STOPPED', replyNavigation.stopped);
-        doc.defaultView.addEventListener('focus', syncNativeFullscreen);
-        syncNativeFullscreen();
-        doc.addEventListener('fullscreenchange', fullscreenChanged);
-        doc.addEventListener('webkitfullscreenchange', fullscreenChanged);
         apply();
     }
     // 扩展页排查：每块的 id、在谁下面、排序、显示方式，复制出来发给 cc（只有插件名字，没有聊天内容）
@@ -502,58 +498,6 @@ export function createTidy(host) {
         Object.assign(S(), { on: false });
         save(); apply(); rerender?.();
         toast('success', '界面恢复原样了');
-    }
-
-    // 全屏只在点击时请求，不保存为自动进入；退出系统全屏时同步按钮。
-    let fullscreenBusy = false;
-    let nativeFullscreen = false;
-    // TT 的桌面窗口接口在移动端仍可能存在，但不能用于 iOS 元素全屏。
-    // 先同步判定平台，避免 await 原生探测消耗用户手势，再去请求网页全屏。
-    const mobileHost = () => {
-        const nav = doc.defaultView?.navigator;
-        return /iPhone|iPad|iPod|Android/i.test(nav?.userAgent || '')
-            || (nav?.platform === 'MacIntel' && nav?.maxTouchPoints > 1);
-    };
-    const nativeWindow = () => mobileHost() ? null : doc.defaultView?.__TAURI__?.window?.getCurrentWindow?.();
-    const fullscreenElement = () => doc.fullscreenElement || doc.webkitFullscreenElement;
-    const fullscreenChanged = () => rerender?.();
-    async function syncNativeFullscreen() {
-        try {
-            const win = nativeWindow();
-            if (!win?.isFullscreen) return;
-            const value = await win.isFullscreen();
-            if (!dead && value !== nativeFullscreen) { nativeFullscreen = value; rerender?.(); }
-        } catch { /* 未开放窗口权限时，留给点击后的错误提示。 */ }
-    }
-    async function toggleFullscreen() {
-        if (fullscreenBusy) return;
-        fullscreenBusy = true;
-        try {
-            const win = nativeWindow();
-            if (win?.isFullscreen && win?.setFullscreen) {
-                const was = await win.isFullscreen();
-                await win.setFullscreen(!was);
-                nativeFullscreen = await win.isFullscreen();
-                if (nativeFullscreen === was) throw new Error('全屏状态未改变');
-            } else if (fullscreenElement()) {
-                const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
-                if (!exit) throw new Error('没有退出全屏接口');
-                await exit.call(doc);
-            } else {
-                const root = doc.documentElement;
-                const request = root.requestFullscreen || root.webkitRequestFullscreen;
-                if (!request) {
-                    toast('warning', '当前环境未提供页面全屏接口。TT iOS 使用网页元素全屏，请核对 TT 和 iOS 版本；普通安全区布局无法靠 CSS 扩展到系统栏。');
-                    return;
-                }
-                await request.call(root);
-            }
-        } catch (e) {
-            toast('warning', '未能切换全屏：' + (e?.message || '当前环境未能完成请求'));
-        } finally {
-            fullscreenBusy = false;
-            rerender?.();
-        }
     }
 
     // —— 面板 ——
@@ -678,13 +622,9 @@ export function createTidy(host) {
             edgeMessage ? h('p', { class: 'tvrm-tidy-warn' }, edgeMessage) : null,
             h('div', { class: 'tvrm-actions' }, btn('重新同步外层颜色', () => edgeColor.retry()))));
 
-        kids.push(part('fullscreen', '页面全屏', fullscreenElement() || nativeFullscreen ? '已全屏' : '让酒馆占满屏幕',
-            h('div', { class: 'tvrm-actions' }, btn(fullscreenElement() || nativeFullscreen ? '退出全屏' : '进入全屏', () => toggleFullscreen())),
-            h('p', { class: 'tvrm-note' }, '独立于界面整理。能否隐藏手机顶部状态栏和底部横条，取决于 TT / 浏览器的全屏支持。')));
-
         box.replaceChildren(...kids);
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { quickReplyFold.destroy(); replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); syncSmooth(false); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { quickReplyFold.destroy(); replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); syncSmooth(false); style?.remove(); } };
 }
