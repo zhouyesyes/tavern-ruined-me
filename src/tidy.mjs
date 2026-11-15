@@ -1,3 +1,4 @@
+import { createChatStability } from './chat-stability.mjs';
 import { createEdgeColor } from './edge-color.mjs';
 import { createChatJumpProbe } from './chat-jump-probe.mjs';
 import { createScrollProbe } from './scrollProbe.mjs';
@@ -36,13 +37,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -128,6 +129,7 @@ export function createTidy(host) {
     let style = null;
     const scrollProbe = createScrollProbe(doc, () => rerender?.());
     const chatProbe = createChatJumpProbe(doc, host.chatPreferences, () => rerender?.());
+    const chatStability = createChatStability(doc, ctx, host.chatPreferences);
     let edgeMessage = '';
     const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } }, host.resumeBackdrop);
 
@@ -399,6 +401,7 @@ export function createTidy(host) {
     function apply() {
         if (dead) return;
         edgeColor.apply(S().edgeColor, S().edgeGradientColor);
+        chatStability.apply(S().chatStability);
         pause();
         undoAll();
         if (S().on && !yantaiOn()) {
@@ -442,6 +445,7 @@ export function createTidy(host) {
         doc.addEventListener('click', e => { if (e.target.closest?.('#extensionsMenuButton,#extensions-settings-button > .drawer-toggle,#user-settings-button > .drawer-toggle,#options_button')) schedule(); }, true);
         host.on?.('APP_READY', schedule);
         host.on?.('CHAT_CHANGED', chatProbe.chatChanged);
+        host.on?.('CHAT_CHANGED', chatStability.chatChanged);
         doc.defaultView.addEventListener('focus', syncNativeFullscreen);
         syncNativeFullscreen();
         doc.addEventListener('fullscreenchange', fullscreenChanged);
@@ -614,6 +618,10 @@ export function createTidy(host) {
                 btn('复制检测结果', async () => { scrollProbe.stop(); try { await doc.defaultView.navigator.clipboard.writeText(scrollProbe.report()); toast('success', '检测结果已复制'); } catch { toast('warning', '请在下方框内长按复制检测结果'); } })),
             h('textarea', { class: 'text_pole', readonly: true, rows: 5 }, scrollProbe.report())));
 
+        kids.push(part('chatStability', '聊天定位稳定（试验）', st.chatStability ? '已开启' : '未开启',
+            check('保持聊天阅读位置', st.chatStability, value => change(x => { x.chatStability = value; }), '延后加载导致消息变高时：原本在末尾则维持末尾，往上阅读则保留当前段落；滑动中不校正。'),
+            h('p', { class:'tvrm-note' }, '仅对提供原生滚动接口的静态消息列表生效；TT 虚拟滚动仍由宿主管理。默认关闭，可随时关闭恢复。')));
+
         kids.push(part('chatJumpProbe', '聊天跳动检测', chatProbe.running ? '正在记录 · 60 秒后停止' : '记录定位命令与消息高度变化',
             h('p', { class: 'tvrm-note' }, '先开始记录，再重新进入会跳的聊天并往上翻；回来停止并复制结果。只记录位置、楼层编号和调用函数名，不读取正文，不改变滚动位置。'),
             h('div', { class: 'tvrm-actions' }, btn(chatProbe.running ? '停止记录聊天跳动' : '开始记录聊天跳动', () => chatProbe.running ? chatProbe.stop() : chatProbe.start()),
@@ -640,5 +648,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }
