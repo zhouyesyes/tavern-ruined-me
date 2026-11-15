@@ -302,7 +302,7 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     assert.ok(!group.textContent.includes('滑动空白修复'));
     assert.ok(!group.textContent.includes('页面全屏'));
     tidy.render(panel, 'optimization');
-    assert.deepEqual([...panel.children].map(node => node.dataset.tvrmPart), ['smooth', 'worldDuplicateFix', 'chatStability', 'replyNavigation', 'diagnostics']);
+    assert.deepEqual([...panel.children].map(node => node.dataset.tvrmPart), ['smooth', 'worldDuplicateFix', 'chatStability', 'replyNavigation', 'pageRefresh', 'diagnostics']);
     const diagnostics = panel.querySelector('[data-tvrm-part=diagnostics]');
     assert.equal(diagnostics.open, false);
     assert.deepEqual([...diagnostics.querySelectorAll('details')].map(node => node.dataset.tvrmPart), ['scrollProbe', 'chatJumpProbe']);

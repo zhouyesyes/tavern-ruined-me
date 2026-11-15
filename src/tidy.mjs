@@ -1,3 +1,4 @@
+import { createPageRefresh } from './page-refresh.mjs';
 import { createQuickReplyFold } from './quick-reply-fold.mjs';
 import { createReplyNavigation } from './reply-navigation.mjs';
 import { createWorldDisplayGuard } from './world-display-guard.mjs';
@@ -40,13 +41,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true, replyStartButton:true, replyStartAuto:false, quickReplyFold:true,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true, replyStartButton:true, replyStartAuto:false, quickReplyFold:true, pageRefresh:true,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix', 'replyStartButton', 'replyStartAuto', 'quickReplyFold']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix', 'replyStartButton', 'replyStartAuto', 'quickReplyFold', 'pageRefresh']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -139,6 +140,7 @@ export function createTidy(host) {
     const worldDisplay = createWorldDisplayGuard(doc);
     const chatProbe = createChatJumpProbe(doc, () => ({ ...host.chatPreferences?.(), chatStability:S().chatStability }), () => rerender?.());
     const chatStability = createChatStability(doc, ctx, host.chatPreferences, details => chatProbe.noteState(details));
+    const pageRefresh = createPageRefresh(doc, host.reloadPage);
     const replyNavigation = createReplyNavigation(doc, ctx, chatStability.navigateReply, chatStability.releaseReply, (kind, message) => toast(kind, message));
     const quickReplyFold = createQuickReplyFold(doc);
     let edgeMessage = '';
@@ -200,7 +202,7 @@ export function createTidy(host) {
         }
         const list = [];
         for (const [key, same] of groups) {
-            if (key === 'tvrm-reply-start') continue; // Independent visibility, never move our own menu action.
+            if (key === 'tvrm-reply-start' || key === 'tvrm-page-refresh') continue; // Independent visibility, never move our own menu action.
             const a = same[0];
             list.push({ key, label: squash(a.querySelector('span')?.textContent || a.textContent) || key, on: same.some(shown) });
         }
@@ -414,6 +416,7 @@ export function createTidy(host) {
         if (dead) return;
         edgeColor.apply(S().edgeColor, S().edgeGradientColor);
         chatStability.apply(S().chatStability);
+        pageRefresh.apply(S().pageRefresh);
         replyNavigation.apply({ button:S().replyStartButton, auto:S().replyStartAuto });
         quickReplyFold.apply({ enabled:S().quickReplyFold });
         if (S().worldDuplicateFix) worldDisplay.start(); else worldDisplay.destroy();
@@ -465,6 +468,8 @@ export function createTidy(host) {
         host.on?.('CHAT_CHANGED', chatStability.chatChanged);
         host.on?.('CHAT_CHANGED', replyNavigation.chatChanged);
         host.on?.('APP_READY', replyNavigation.syncButton);
+        host.on?.('APP_READY', pageRefresh.sync);
+        host.on?.('CHAT_CHANGED', pageRefresh.sync);
         host.on?.('GENERATION_STARTED', replyNavigation.started);
         host.on?.('MESSAGE_RECEIVED', replyNavigation.received);
         host.on?.('CHARACTER_MESSAGE_RENDERED', replyNavigation.syncButton);
@@ -600,6 +605,9 @@ export function createTidy(host) {
             check('API 回复完成后自动跳到开头', st.replyStartAuto, value => change(x => { x.replyStartAuto = value; }), '默认关闭；只在本聊天确实收到助手回复并结束生成后执行，不在打开菜单、进入历史聊天或生成中断时执行。'),
             h('div', { class:'tvrm-actions' }, btn('跳到最新回复开头', () => replyNavigation.jump()))));
 
+        kids.push(part('pageRefresh', '页面刷新', st.pageRefresh ? '显示在 ☰ 菜单' : '已隐藏',
+            check('在 ☰ 菜单显示「刷新页面」', st.pageRefresh, value => change(x => { x.pageRefresh = value; }), '重新加载当前酒馆页面。未保存的页面操作可能丢失。')));
+
         kids.push(part('quickReplyFold', '快捷回复栏收放', st.quickReplyFold ? '随输入自动收放' : '使用原布局',
             check('点输入框展开快捷回复', st.quickReplyFold, value => change(x => { x.quickReplyFold = value; }), '点输入框时展开，滑动聊天或点到其他地方时收起；操作快捷按钮不会提前收起。'),
             h('p', { class:'tvrm-note' }, '展开状态仅在当前页面临时保留。只折叠原生内嵌快捷栏，不改快捷回复内容和自动执行设置；关闭此选项恢复原布局。')));
@@ -634,5 +642,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { quickReplyFold.destroy(); replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); syncSmooth(false); style?.remove(); } };
+    return { init, apply, render, restore, settings: S, destroy() { pageRefresh.destroy(); quickReplyFold.destroy(); replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); syncSmooth(false); style?.remove(); } };
 }
