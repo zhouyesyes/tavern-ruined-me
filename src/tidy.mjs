@@ -1,3 +1,4 @@
+import { createReplyNavigation } from './reply-navigation.mjs';
 import { createWorldDisplayGuard } from './world-display-guard.mjs';
 import { createChatStability } from './chat-stability.mjs';
 import { createEdgeColor } from './edge-color.mjs';
@@ -38,13 +39,13 @@ export const EXT_DEFAULT = ['assets_container', 'expressions_container', 'sd_con
 const DEFAULTS = {
     on: false, hideTop: [], topOpen: false, foldMenu: true, menuFolded: [...MENU_DEFAULT], menuOpen: false, hideWand: [], wandOpen: false,
     foldExt: true, extFolded: [...EXT_DEFAULT], extOpen: false, foldExtras: true, extSeen: [],
-    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true,
+    foldUser: true, userFolded: USER_PARTS.map(p => p.key), userOpen: {}, smooth: false, chatStability:false, worldDuplicateFix:true, replyStartButton:true, replyStartAuto:false,
 };
 const strList = (v, d) => [...new Set((Array.isArray(v) ? v : d).filter(x => typeof x === 'string' && x && x.length < 300))].slice(0, 500);
 export function normalizeTidy(v) {
     const d = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
+    for (const k of ['on', 'topOpen', 'foldMenu', 'menuOpen', 'wandOpen', 'foldExt', 'extOpen', 'foldExtras', 'foldUser', 'smooth', 'chatStability', 'worldDuplicateFix', 'replyStartButton', 'replyStartAuto']) out[k] = typeof d[k] === 'boolean' ? d[k] : DEFAULTS[k];
     for (const k of ['hideTop', 'menuFolded', 'hideWand', 'extFolded', 'extSeen']) out[k] = strList(d[k], DEFAULTS[k]);
     out.userFolded = USER_PARTS.map(p => p.key).filter(k => (Array.isArray(d.userFolded) ? d.userFolded : DEFAULTS.userFolded).includes(k));
     out.userOpen = Object.fromEntries(USER_PARTS.map(p => [p.key, d.userOpen?.[p.key] === true]));
@@ -132,6 +133,7 @@ export function createTidy(host) {
     const worldDisplay = createWorldDisplayGuard(doc);
     const chatProbe = createChatJumpProbe(doc, () => ({ ...host.chatPreferences?.(), chatStability:S().chatStability }), () => rerender?.());
     const chatStability = createChatStability(doc, ctx, host.chatPreferences, details => chatProbe.noteState(details));
+    const replyNavigation = createReplyNavigation(doc, ctx, chatStability.navigateReply, chatStability.releaseReply, (kind, message) => toast(kind, message));
     let edgeMessage = '';
     const edgeColor = createEdgeColor(doc, host.publishBackdrop, message => { if (edgeMessage !== message) { edgeMessage = message; rerender?.(); } }, host.resumeBackdrop);
 
@@ -404,6 +406,7 @@ export function createTidy(host) {
         if (dead) return;
         edgeColor.apply(S().edgeColor, S().edgeGradientColor);
         chatStability.apply(S().chatStability);
+        replyNavigation.apply({ button:S().replyStartButton, auto:S().replyStartAuto });
         if (S().worldDuplicateFix) worldDisplay.start(); else worldDisplay.destroy();
         pause();
         undoAll();
@@ -449,6 +452,13 @@ export function createTidy(host) {
         host.on?.('APP_READY', schedule);
         host.on?.('CHAT_CHANGED', chatProbe.chatChanged);
         host.on?.('CHAT_CHANGED', chatStability.chatChanged);
+        host.on?.('CHAT_CHANGED', replyNavigation.chatChanged);
+        host.on?.('APP_READY', replyNavigation.syncButton);
+        host.on?.('GENERATION_STARTED', replyNavigation.started);
+        host.on?.('MESSAGE_RECEIVED', replyNavigation.received);
+        host.on?.('CHARACTER_MESSAGE_RENDERED', replyNavigation.syncButton);
+        host.on?.('GENERATION_ENDED', replyNavigation.ended);
+        host.on?.('GENERATION_STOPPED', replyNavigation.stopped);
         doc.defaultView.addEventListener('focus', syncNativeFullscreen);
         syncNativeFullscreen();
         doc.addEventListener('fullscreenchange', fullscreenChanged);
@@ -630,6 +640,11 @@ export function createTidy(host) {
             check('保持聊天阅读位置', st.chatStability, value => change(x => { x.chatStability = value; }), '延后加载导致消息变高时：原本在末尾则维持末尾，往上阅读则保留当前段落；滑动中不校正。'),
             h('p', { class:'tvrm-note' }, '仅对提供原生滚动接口的静态消息列表生效；TT 虚拟滚动仍由宿主管理。默认关闭，可随时关闭恢复。')));
 
+        kids.push(part('replyNavigation', '最新回复阅读', st.replyStartAuto ? '回复完成后自动定位开头' : '手动控制',
+            check('显示输入栏「最新回复开头」按钮', st.replyStartButton, value => change(x => { x.replyStartButton = value; }), '输入栏 ↟ 按钮可随时跳到最新一条助手回复的正文开头。'),
+            check('API 回复完成后自动跳到开头', st.replyStartAuto, value => change(x => { x.replyStartAuto = value; }), '默认关闭；只在本聊天确实收到助手回复并结束生成后执行，不在打开菜单、进入历史聊天或生成中断时执行。'),
+            h('div', { class:'tvrm-actions' }, btn('跳到最新回复开头', () => replyNavigation.jump()))));
+
         kids.push(part('chatJumpProbe', '聊天跳动检测', chatProbe.running ? '正在记录 · 60 秒后停止' : '记录定位命令与消息高度变化',
             h('p', { class: 'tvrm-note' }, '先开始记录，再重新进入会跳的聊天并往上翻；回来停止并复制结果。只记录位置、楼层编号和调用函数名，不读取正文，不改变滚动位置。'),
             h('div', { class: 'tvrm-actions' }, btn(chatProbe.running ? '停止记录聊天跳动' : '开始记录聊天跳动', () => chatProbe.running ? chatProbe.stop() : chatProbe.start()),
@@ -656,5 +671,5 @@ export function createTidy(host) {
         box.scrollTop = scroll;
     }
 
-    return { init, apply, render, restore, settings: S, destroy() { worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
+    return { init, apply, render, restore, settings: S, destroy() { replyNavigation.destroy(); worldDisplay.destroy(); chatStability.destroy(); chatProbe.destroy(); edgeColor.destroy(); scrollProbe.destroy(); dead = true; if (frame !== null) { if (doc.defaultView.cancelAnimationFrame) doc.defaultView.cancelAnimationFrame(frame); else doc.defaultView.clearTimeout(frame); } search?.removeEventListener('input', onSettingsSearch); pause(); undoAll(); style?.remove(); doc.defaultView.removeEventListener('focus', syncNativeFullscreen); doc.removeEventListener('fullscreenchange', fullscreenChanged); doc.removeEventListener('webkitfullscreenchange', fullscreenChanged); } };
 }

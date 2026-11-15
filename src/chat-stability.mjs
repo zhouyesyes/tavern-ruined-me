@@ -4,7 +4,7 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
     const win = doc.defaultView;
     let enabled = false, root = null, resize = null, mutation = null, watched = new Set();
     let state = null, anchor = null, following = false, frame = null, idle = null, touch = false, browsing = false;
-    let lastIntent = -Infinity, editTarget = null;
+    let lastIntent = -Infinity, editTarget = null, chromeUntil = 0, pinnedReply = false;
     const measure = () => root ? { top:root.scrollTop, height:root.scrollHeight, view:root.clientHeight } : null;
     const atEnd = value => value && value.height - value.view - value.top < 24;
     const supported = () => enabled && root?.isConnected && root.getAttribute('data-tt-chat-surface') !== 'bounded'
@@ -41,7 +41,8 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
         if (browsing || touch || editing()) { trace({ action:'让出用户操作', following, touch, browsing, editing:!!editing() }); state = current; anchor = pickAnchor(); return; }
         const changed = Math.abs(current.height - state.height) > 1 || Math.abs(current.view - state.view) > 1;
         const tailDrift = following && autoBottom() && !atEnd(current);
-        if (!changed && !tailDrift) return;
+        const menuDrift = win.performance.now() < chromeUntil && anchor?.node.isConnected;
+        if (!changed && !tailDrift && !menuDrift) return;
         let target = null;
         if (following && autoBottom()) target = current.height - current.view;
         else if (anchor?.node.isConnected && root.contains(anchor.node)) {
@@ -56,7 +57,7 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
             }
         }
         // Preserve the existing follow/reading intent; a layout shift is not user input.
-        state = measure(); if (!following) anchor = pickAnchor();
+        state = measure(); if (!following && !pinnedReply) anchor = pickAnchor();
     }
     function schedule() {
         if (!supported() || frame !== null) return;
@@ -81,7 +82,7 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
     function chatChanged() {
         if (!enabled) return;
         if (frame !== null) win.cancelAnimationFrame(frame); frame = null;
-        win.clearTimeout(idle); editTarget = null; lastIntent = -Infinity; const activeTouch = touch; attach(); browsing = touch = activeTouch; remember(); if (activeTouch) following = false; schedule();
+        win.clearTimeout(idle); editTarget = null; lastIntent = -Infinity; chromeUntil = 0; pinnedReply = false; const activeTouch = touch; attach(); browsing = touch = activeTouch; remember(); if (activeTouch) following = false; schedule();
     }
     const scroll = event => {
         if (event.target !== root || !supported()) return;
@@ -89,15 +90,23 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
         const current = measure();
         // A scroll event alone is not evidence of user navigation. WebKit/frame
         // focus may move the parent before ResizeObserver reports any height change.
-        if (following && autoBottom() && !atEnd(current)) { schedule(); return; }
+        if ((following && autoBottom() && !atEnd(current)) || (win.performance.now() < chromeUntil && anchor?.node.isConnected)) { schedule(); return; }
         if (state && Math.abs(current.height - state.height) <= 1 && Math.abs(current.view - state.view) <= 1) {
             state = current;
-            if (autoBottom() && atEnd(current)) following = true;
-            anchor = following ? null : pickAnchor();
+            if (!pinnedReply && autoBottom() && atEnd(current)) following = true;
+            if (!pinnedReply) anchor = following ? null : pickAnchor();
         }
     };
     const input = event => {
         if (!enabled) return;
+        const menu = event.target.closest?.('#options_button,#options,.options-content,#extensionsMenuButton,#extensionsMenu,#top-settings-holder,#top-bar');
+        if (menu || (event.type === 'keydown' && event.key === 'Escape' && win.performance.now() < chromeUntil)) {
+            // Opening/closing chrome is not a request to move the conversation.
+            chromeUntil = win.performance.now() + 2000;
+            if (!following && !anchor) anchor = pickAnchor();
+            trace({ action:'菜单保留位置', event:event.type, following });
+            return;
+        }
         const isEditable = event.target.matches?.('input,textarea,[contenteditable=true]');
         if (event.type === 'focusin') {
             // Programmatic autofocus is trusted too; require preceding user intent.
@@ -105,7 +114,7 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
             editTarget = isEditable && root?.contains(event.target) ? event.target : null;
             return;
         }
-        lastIntent = win.performance.now();
+        lastIntent = win.performance.now(); chromeUntil = 0; pinnedReply = false;
         if (event.type === 'pointerdown' || event.type === 'keydown') editTarget = isEditable && root?.contains(event.target) ? event.target : null;
         if (root?.contains(event.target)) {
             browsing = true; following = false;
@@ -118,19 +127,33 @@ export function createChatStability(doc, getContext, preferences = () => ({}), t
             following = false; anchor = null; state = measure();
         }
     };
+    function navigateReply(node, automatic = false) {
+        const targetRoot = doc.getElementById('chat'), context = getContext();
+        if (!node?.isConnected || !targetRoot?.contains(node) || typeof context?.scrollChatSurfaceTo !== 'function') return false;
+        if (automatic && (touch || browsing || editing())) return false;
+        if (frame !== null) win.cancelAnimationFrame(frame); frame = null; win.clearTimeout(idle);
+        following = false; browsing = touch = false; pinnedReply = true; chromeUntil = 0; editTarget = null;
+        const top = targetRoot.getBoundingClientRect().top + targetRoot.clientTop;
+        const target = Math.max(0, Math.min(targetRoot.scrollHeight - targetRoot.clientHeight, targetRoot.scrollTop + node.getBoundingClientRect().top - top));
+        context.scrollChatSurfaceTo({ top:target, behavior:'instant' });
+        if (root === targetRoot) { state = measure(); anchor = { node, offset:0 }; }
+        trace({ action:automatic ? '回复完成定位开头' : '手动定位回复开头', to:target });
+        return true;
+    }
+    function releaseReply() { pinnedReply = false; if (enabled) { remember(); if (!following) anchor = null; } }
     const listeners = [['scroll',scroll],['pointerdown',input],['touchstart',input],['touchmove',input],['touchend',input],['touchcancel',input],['wheel',input],['keydown',input],['focusin',input]];
     function apply(value) {
         if (!!value === enabled) return;
         enabled = !!value;
         if (enabled) {
-            attach(); remember();
+            pinnedReply = false; attach(); remember();
             for (const [name, fn] of listeners) doc.addEventListener(name, fn, { capture:true, passive:true });
         } else {
             for (const [name, fn] of listeners) doc.removeEventListener(name, fn, true);
             resize?.disconnect(); mutation?.disconnect(); watched.clear();
             win.clearTimeout(idle); if (frame !== null) win.cancelAnimationFrame(frame); frame = null;
-            root = state = anchor = editTarget = null; following = touch = browsing = false; lastIntent = -Infinity;
+            root = state = anchor = editTarget = null; following = touch = browsing = pinnedReply = false; lastIntent = -Infinity; chromeUntil = 0;
         }
     }
-    return { apply, chatChanged, destroy() { apply(false); } };
+    return { apply, chatChanged, navigateReply, releaseReply, destroy() { apply(false); } };
 }
