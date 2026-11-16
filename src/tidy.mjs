@@ -602,8 +602,7 @@ export function createTidy(host) {
 
         kids.push(part('replyNavigation', '最新回复阅读', st.replyStartAuto ? '回复完成后自动定位开头' : '手动控制',
             check('在 ☰ 菜单显示「最新回复开头」', st.replyStartButton, value => change(x => { x.replyStartButton = value; }), '收进现有菜单，不占输入栏；点菜单项可跳到最新助手回复的正文开头。'),
-            check('API 回复完成后自动跳到开头', st.replyStartAuto, value => change(x => { x.replyStartAuto = value; }), '默认关闭；只在本聊天确实收到助手回复并结束生成后执行，不在打开菜单、进入历史聊天或生成中断时执行。'),
-            h('div', { class:'tvrm-actions' }, btn('跳到最新回复开头', () => replyNavigation.jump()))));
+            check('API 回复完成后自动跳到开头', st.replyStartAuto, value => change(x => { x.replyStartAuto = value; }), '默认关闭；只在本聊天确实收到助手回复并结束生成后执行，不在打开菜单、进入历史聊天或生成中断时执行。')));
 
         kids.push(part('pageRefresh', '聊天刷新', st.pageRefresh ? '显示在 ☰ 菜单' : '已隐藏',
             check('在 ☰ 菜单显示「刷新当前聊天」', st.pageRefresh, value => change(x => { x.pageRefresh = value; }), '只重新载入当前聊天，不重载酒馆页面；回复生成中不执行。')));

@@ -303,6 +303,8 @@ test('前五项和总开关一起默认折叠，独立功能放外面', () => {
     assert.ok(!group.textContent.includes('页面全屏'));
     tidy.render(panel, 'optimization');
     assert.deepEqual([...panel.children].map(node => node.dataset.tvrmPart), ['smooth', 'worldDuplicateFix', 'chatStability', 'replyNavigation', 'pageRefresh', 'diagnostics']);
+    assert.equal(panel.querySelectorAll('[data-tvrm-part=replyNavigation] button').length, 0);
+    assert.equal(panel.querySelectorAll('[data-tvrm-part=replyNavigation] input[type=checkbox]').length, 2);
     const diagnostics = panel.querySelector('[data-tvrm-part=diagnostics]');
     assert.equal(diagnostics.open, false);
     assert.deepEqual([...diagnostics.querySelectorAll('details')].map(node => node.dataset.tvrmPart), ['scrollProbe', 'chatJumpProbe']);

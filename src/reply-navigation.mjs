@@ -41,16 +41,24 @@ export function createReplyNavigation(doc, getContext, navigate, release, toast 
         const index = Number(id), message = getContext().chat?.[index];
         if (!Number.isInteger(index) || !message || message.is_user || message.is_system || (!generation.canReplace && index < generation.minimum)) return;
         generation.reply = index;
+        if (generation.ended) scheduleJump();
     }
-    function ended() {
-        const run = generation; generation = null;
-        if (!auto || disposed || !run || run.reply === null || run.identity !== identity()) return;
+    function scheduleJump() {
+        const run = generation;
+        if (!auto || disposed || !run?.ended || run.reply === null || run.identity !== identity()) return;
         cancel(); const current = version;
-        // Run after the host's final render/scroll frame, never during token streaming.
+        // Streaming TT emits GENERATION_ENDED before MESSAGE_RECEIVED. Wait for
+        // both signals, then let final message rendering and host scrolling settle.
         frame = win.requestAnimationFrame(() => { frame = win.requestAnimationFrame(() => {
             frame = null;
-            if (!disposed && auto && version === current && run.identity === identity()) jump(true, run.reply);
+            if (!disposed && auto && version === current && generation === run && run.identity === identity()) {
+                generation = null; jump(true, run.reply);
+            }
         }); });
+    }
+    function ended() {
+        if (!generation) return;
+        generation.ended = true; scheduleJump();
     }
     function stopped() { generation = null; cancel(); }
     function chatChanged() { stopped(); syncButton(); }
