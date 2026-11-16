@@ -437,11 +437,21 @@ export function createTidy(host) {
     function pause() { for (const o of observers) o.disconnect(); observers.length = 0; }
     function watch() {
         const Obs = doc.defaultView?.MutationObserver; if (!Obs || !S().on || yantaiOn()) return;
-        const targets = [$('top-settings-holder'), $('extensionsMenu'), $('extensions_settings'), $('extensions_settings2'), doc.querySelector('#options .options-content'),
+        const targets = [$('top-settings-holder'), $('extensionsMenu'), $('extensions_settings'), $('extensions_settings2'), doc.querySelector('.tvrm-tidy-extbody'), doc.querySelector('#options .options-content'),
             ...USER_PARTS.map(p => doc.querySelector(p.sel))].filter(Boolean);
         for (const t of targets) {
-            const o = new Obs(recs => { if (recs.some(r => [...r.addedNodes, ...r.removedNodes].some(n => n.nodeType === 1 && !added.has(n) && !moved.some(m => m[0] === n)))) schedule(); });
-            o.observe(t, { childList: true, subtree: t.id === 'extensionsMenu' });
+            const extensionList = ['extensions_settings','extensions_settings2'].includes(t.id) || t.classList.contains('tvrm-tidy-extbody');
+            const o = new Obs(recs => {
+                if (recs.some(r => [...r.addedNodes, ...r.removedNodes].some(n => {
+                    if (n.nodeType !== 1 || added.has(n) || moved.some(m => m[0] === n)) return false;
+                    if (!extensionList || r.target === t) return true;
+                    // Built-ins fill pre-existing empty containers asynchronously.
+                    // Reconsider hidden containers and panel headers, not every
+                    // option/item inserted deep inside an already visible panel.
+                    return !!r.target.closest?.('.extension_container.tvrm-tidy-gone') || n.matches('.inline-drawer-header') || !!n.querySelector('.inline-drawer-header');
+                }))) schedule();
+            });
+            o.observe(t, { childList:true, subtree:t.id === 'extensionsMenu' || extensionList });
             observers.push(o);
         }
     }

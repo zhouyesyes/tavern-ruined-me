@@ -437,3 +437,31 @@ test('快捷栏随输入交互展开，界面刷新不改变临时状态，关�
  assert.ok(doc.querySelector('#options .options-content #tvrm-reply-start'));
  tidy.settings().quickReplyFold=false;tidy.apply();assert.equal(doc.documentElement.classList.contains('tvrm-quick-replies-folded'),false);tidy.destroy();dom.window.close();
 });
+
+test('异步填入空的内置扩展容器后自动恢复显示并收入折叠，关闭后保留原节点和事件', async () => {
+    const { doc, tidy, dom } = setup({ on:true, extOpen:true });
+    const container=doc.getElementById('sd_container'), originalParent=container.parentElement;
+    tidy.init(); assert.ok(gone(container));
+    const drawer=doc.createElement('div');drawer.className='inline-drawer';drawer.innerHTML='<div class="inline-drawer-header"><b>Image Generation</b></div><button>原生设置</button>';
+    let clicks=0;drawer.querySelector('button').addEventListener('click',()=>clicks++);
+    container.append(drawer);await new Promise(r=>setTimeout(r,40));
+    assert.equal(gone(container),false,'新加载的原生面板不能继续被空容器隐藏规则藏住');
+    assert.equal(container.parentElement.className,'tvrm-tidy-extbody');
+    assert.match(doc.querySelector('.tvrm-tidy-more-head').textContent,/（3）/);
+    drawer.querySelector('button').click();assert.equal(clicks,1);
+    tidy.apply();assert.equal(container.querySelectorAll('.inline-drawer').length,1);
+    tidy.restore();assert.equal(container.parentElement,originalParent);assert.equal(container.firstElementChild,drawer);assert.equal(gone(container),false);
+    tidy.destroy();dom.window.close();
+});
+
+test('折叠区里的原生面板重建仍可识别，普通列表更新不重排整个折叠区', async () => {
+    const {doc,tidy,dom}=setup({on:true,extOpen:true});tidy.init();
+    const container=doc.getElementById('assets_container');
+    container.innerHTML='<div class="inline-drawer"><div class="inline-drawer-header"><b>Assets 新标题</b></div><div class="native-list"></div></div>';
+    await new Promise(r=>setTimeout(r,40));
+    const box=doc.querySelector('.tvrm-tidy-extbox');
+    const list=container.querySelector('.native-list');list.append(doc.createElement('button'));
+    await new Promise(r=>setTimeout(r,40));assert.equal(doc.querySelector('.tvrm-tidy-extbox'),box);
+    tidy.restore();assert.equal(container.parentElement.id,'extensions_settings');assert.match(container.textContent,/Assets 新标题/);
+    tidy.destroy();dom.window.close();
+});
